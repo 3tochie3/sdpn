@@ -541,12 +541,13 @@ const CONTENT = {
     noticeLabel: 'ОБЪЯВЛЕНИЕ',
     noticeTitle: 'Препарат «СДПН» проходит последние испытания.',
     noticeCountdown: 'Поступление в аптеки через',
-    releasedTitle: 'Препарат «СДПН» поступил в аптеки.',
-    releasedText: 'Пройдите обследование, чтобы получить назначение.',
+    releasedTitle: 'Курс первоначального лечения пройден.',
+    releasedText: 'Препарат «СДПН» поступил на все площадки. Пройдите обследование, чтобы получить назначение.',
+    releasedBtn: '▶ Слушать «СДПН»',
     onRecord: (n) => `На учёте: ${n} ${plural(n, 'пациент', 'пациента', 'пациентов')}`,
     statsMin: 20,           // счётчик показывается, только когда на учёте не меньше стольких человек
     regNext: (n) => `Вы станете пациентом № ${n} в очереди на получение препарата.`,
-    presaveBtn: 'Оформить предзаказ',
+    presaveBtn: 'Предзаказ «СДПН»',
     noPresave: 'Предзаказ откроется в ближайшее время. Следите за каналом.',
     status: 'Статус назначения: препарат ожидает поступления в аптеки.',
     statusReleased: 'Статус назначения: препарат выдан.',
@@ -1251,7 +1252,10 @@ function renderNotice() {
   box.hidden = false;
   box.classList.toggle('released', r.phase === 'released');
   if (r.phase === 'released') {
-    box.innerHTML = `<span class="n-label">${esc(P.noticeLabel)}</span><div class="n-title">${esc(P.releasedTitle)}</div><div class="n-sub">${esc(P.releasedText)}</div>`;
+    box.innerHTML = `<span class="n-label">${esc(P.noticeLabel)}</span><div class="n-title">${esc(P.releasedTitle)}</div><div class="n-sub">${esc(P.releasedText)}</div>` +
+      (CONTENT.release.albumUrl ? `<button class="btn btn-ink" id="btn-album" style="margin-top:12px;min-height:44px">${esc(P.releasedBtn)}</button>` : '');
+    const ab = $('#btn-album');
+    if (ab) ab.addEventListener('click', () => { haptic.tap(); openUrl(CONTENT.release.albumUrl); });
     return;
   }
   box.innerHTML = `<span class="n-label">${esc(P.noticeLabel)}</span>
@@ -1635,7 +1639,10 @@ const SIGN_MYAGKOV = 'M2 26 C6 10 12 8 14 26 C16 8 22 6 24 26 C28 14 34 12 36 22
 /* ===== 4. Медзаключение ===== */
 function renderResult(opts = {}) {
   const r = state.result, f = r.form, i = CONTENT.inst, u = CONTENT.ui, rel = releaseInfo();
-  if (!opts.fromHistory) saveToHistory(r, state.number); // новое исследование — в «Результаты»
+  if (!opts.fromHistory) {
+    saveToHistory(r, state.number); // новое исследование — в «Результаты»
+    reportTrack(r);                 // и, если пациент на учёте, — в его назначения на сервере
+  }
   const secForm = r.secondary && CONTENT.forms.find((x) => x.scale === r.secondary);
   const fmt = (v) => v.toFixed(2).replace('.', ',');
   const scoresHTML = CONTENT.scaleOrder.slice().sort((a, b) => r.norm[b] - r.norm[a]).map((s) =>
@@ -1757,6 +1764,15 @@ async function syncRegStatus() {
     if (active !== isRegistered()) { setRegistered(active); refreshRegViews(); }
   } catch (e) {}
 }
+/* Пациент на учёте прошёл обследование ещё раз — новый трек добавляется в его назначения на сервере */
+function reportTrack(r) {
+  if (!IN_TG || !CONTENT.api || FRESH || !isRegistered()) return;
+  fetch(CONTENT.api.replace(/\/$/, '') + '/track', {
+    method: 'POST', headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ initData: tg.initData, track: r.trackId, form: r.form.code, card: state.number }),
+  }).catch(() => {});
+}
+
 /* Статус учёта поменялся — перерисовать то, что от него зависит */
 function refreshRegViews() {
   $('#tab-lock').classList.toggle('off', isRegistered());
@@ -1800,7 +1816,9 @@ async function register() {
     const res = await fetch(CONTENT.api.replace(/\/$/, '') + '/register', {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' }, // text/plain — без CORS-предзапроса
-      body: JSON.stringify({ initData: tg.initData, track: state.result.trackId, form: state.result.form.code, card: state.number }),
+      // history — все треки из «Результатов»: в день релиза бот перечислит их все
+      body: JSON.stringify({ initData: tg.initData, track: state.result.trackId, form: state.result.form.code, card: state.number,
+        history: [...new Set(historyCache.map((h) => h.t))] }),
     });
     if (!res.ok) throw new Error(res.status);
     setRegistered(true);
@@ -2086,7 +2104,13 @@ document.querySelectorAll('[data-artist]').forEach((el) => { el.textContent = CO
   document.querySelectorAll('[data-glitch]').forEach(mountGlitch);
   if (IS_LOCAL && QS.has('export')) exportStories();
   else if (IS_LOCAL && QS.has('sim')) { document.body.innerHTML = '<pre style="padding:20px;font:14px monospace">' + JSON.stringify(simulate(), null, 2) + '</pre>'; }
-  else { renderStart(); loadHistory(); }
+  else {
+    renderStart();
+    await loadHistory();
+    // ?tab=proc / ?tab=hist — кнопки из сообщений бота открывают нужную вкладку сразу
+    const tab = QS.get('tab');
+    if (tab === 'proc') openTab('s-proc'); else if (tab === 'hist') openTab('s-hist');
+  }
 })();
 </script>
 </body>
