@@ -1,0 +1,1395 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#f5f0e3">
+<title>СДПН — Обследование</title>
+
+<!-- Telegram Mini App SDK (в обычном браузере просто ничего не делает) -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=PT+Serif:ital,wght@0,400;0,700;1,400&family=PT+Mono&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+/* =========================================================
+   ТОКЕНЫ
+   «Бумага» всегда светлая, а фон вокруг берётся из темы Telegram.
+   ========================================================= */
+:root {
+  --paper: #f5f0e3;
+  --paper-edge: #e8e0cc;
+  --ink: #1c1b18;
+  --ink-soft: #5d584c;
+  --ink-faint: #8f887a;
+  --rule: #cfc5ae;
+  --blue: #2442a3;          /* чернила печати и подписей */
+  --blue-soft: rgba(36, 66, 163, .12);
+  --red: #c4302b;           /* ЭКГ, глитч, срывы */
+
+  /* фон вокруг листа: переопределяется темой Telegram */
+  --bg: #e7e1d2;
+  --bg-text: #1c1b18;
+  --bg-hint: #6f6a5e;
+  --btn: #1c1b18;
+  --btn-text: #f5f0e3;
+
+  --serif: "PT Serif", "Times New Roman", Times, serif;
+  --mono: "PT Mono", "Courier New", monospace;
+  --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --vh: var(--tg-viewport-stable-height, 100vh);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not(.tg) { --bg: #16171a; --bg-text: #ecebe6; --bg-hint: #8d8b85; --btn: #f5f0e3; --btn-text: #1c1b18; }
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--bg-text);
+  font-family: var(--sans);
+  min-height: var(--vh);
+  overscroll-behavior-y: none;
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+.app { max-width: 520px; margin: 0 auto; padding: 14px 14px calc(28px + env(safe-area-inset-bottom)); }
+
+/* ---------- Экраны ---------- */
+.screen { display: none; }
+.screen.active { display: block; animation: screenIn .38s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes screenIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* ---------- Лист бумаги ---------- */
+.sheet {
+  position: relative;
+  background-color: var(--paper);
+  /* лёгкая фактура бумаги */
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.35  0 0 0 0 0.3  0 0 0 0 0.2  0 0 0 .16 -.06'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"),
+    linear-gradient(180deg, rgba(255,255,255,.35), rgba(0,0,0,0) 30%, rgba(120,100,60,.05));
+  color: var(--ink);
+  border-radius: 3px;
+  padding: 22px 20px 24px;
+  box-shadow: 0 1px 0 var(--paper-edge), 0 10px 30px -12px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.12);
+  font-family: var(--serif);
+}
+.sheet.shake { animation: shake .32s ease-out; }
+@keyframes shake {
+  0% { transform: translateY(0); } 25% { transform: translateY(3px) rotate(.25deg); }
+  55% { transform: translateY(-1px) rotate(-.15deg); } 100% { transform: none; }
+}
+
+/* ---------- Шапка учреждения ---------- */
+.inst { text-align: center; line-height: 1.3; }
+.inst .l1 { font-family: var(--serif); font-weight: 700; font-size: 12.5px; letter-spacing: .08em; }
+.inst .l2 { font-size: 12.5px; margin-top: 2px; }
+.inst .l3 { font-size: 12px; color: var(--ink-soft); font-style: italic; margin-top: 1px; }
+.double-rule { border: 0; height: 4px; border-top: 1.5px solid var(--ink); border-bottom: .75px solid var(--ink); margin: 12px 0 14px; }
+.rule { border: 0; border-top: 1px dashed var(--rule); margin: 14px 0; }
+
+/* ---------- Глитч-дата ---------- */
+.glitch { font-family: var(--mono); letter-spacing: .02em; white-space: nowrap; }
+.glitch .g { display: inline-block; min-width: .6em; text-align: center; }
+.glitch .g.hot { color: var(--red); }
+
+/* ---------- Кнопки ---------- */
+.btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; min-height: 50px; padding: 12px 16px;
+  border: 0; border-radius: 12px;
+  font-family: var(--sans); font-weight: 600; font-size: 15.5px; letter-spacing: .01em;
+  transition: transform .12s ease, opacity .15s ease, background .2s;
+  user-select: none; -webkit-user-select: none;
+}
+.btn:active { transform: scale(.98); }
+.btn-primary { background: var(--btn); color: var(--btn-text); }
+.sheet .btn-primary { background: var(--ink); color: var(--paper); } /* на бумаге — всегда чернила */
+.btn-ink { background: var(--blue); color: #fff; }
+.btn-ghost { background: transparent; color: var(--bg-text); border: 1.5px solid color-mix(in srgb, var(--bg-text) 22%, transparent); }
+.btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.actions { display: grid; gap: 10px; margin-top: 16px; }
+/* в Telegram основную кнопку дублирует MainButton — внутреннюю прячем */
+.tg-main .mb-dup { display: none; }
+
+.disclaimer {
+  font-family: var(--sans); font-size: 11.5px; line-height: 1.45; color: var(--bg-hint);
+  text-align: center; margin: 18px 6px 0;
+}
+
+/* =========================================================
+   1. РЕГИСТРАТУРА
+   ========================================================= */
+.ticket-top { display: flex; justify-content: space-between; align-items: baseline; font-family: var(--mono); font-size: 12px; color: var(--ink-soft); }
+.reg-label { font-family: var(--mono); font-size: 11px; letter-spacing: .25em; color: var(--ink-soft); text-align: center; margin-top: 18px; }
+.logo {
+  font-family: var(--serif); font-weight: 700; text-align: center;
+  font-size: clamp(64px, 22vw, 96px); letter-spacing: .06em; line-height: 1; margin: 6px 0 4px;
+  position: relative;
+}
+.logo .ecg-under { display: block; width: 100%; height: 34px; margin-top: 2px; }
+.decode { margin: 16px 0 4px; display: grid; gap: 10px; }
+.decode div { display: grid; grid-template-columns: 26px 1fr; gap: 6px; font-size: 15px; line-height: 1.35; }
+.decode .n { font-family: var(--mono); color: var(--ink-soft); font-size: 13px; padding-top: 2px; }
+.decode em { display: block; font-style: normal; font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft); margin-top: 2px; letter-spacing: .03em; }
+.call {
+  margin: 18px 0 16px; padding: 14px 14px; border: 1.5px solid var(--ink); border-radius: 2px;
+  font-size: 15.5px; line-height: 1.45; position: relative;
+}
+.call b { display: block; font-size: 18px; margin-bottom: 4px; }
+.doctor-line { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+
+/* =========================================================
+   2. АНКЕТА
+   ========================================================= */
+.card-head { display: flex; justify-content: space-between; align-items: center; font-family: var(--mono); font-size: 11.5px; letter-spacing: .08em; color: var(--ink-soft); text-transform: uppercase; }
+.pages { display: flex; gap: 4px; margin: 10px 0 18px; }
+.pages span {
+  flex: 1; height: 16px; position: relative; border: 1px solid var(--rule); background: #fbf8f0;
+  clip-path: polygon(0 0, calc(100% - 5px) 0, 100% 5px, 100% 100%, 0 100%); /* загнутый уголок */
+  transition: background .3s, border-color .3s;
+}
+.pages span.done { background: var(--ink); border-color: var(--ink); }
+.pages span.now { background: var(--blue-soft); border-color: var(--blue); }
+.q-num { font-family: var(--mono); font-size: 12px; color: var(--blue); letter-spacing: .06em; }
+.q-text { font-family: var(--serif); font-weight: 700; font-size: 21px; line-height: 1.3; margin: 6px 0 4px; text-wrap: pretty; }
+.q-hint { font-family: var(--serif); font-style: italic; font-size: 13.5px; color: var(--ink-soft); margin-bottom: 14px; }
+.options { display: grid; gap: 8px; }
+.opt {
+  display: grid; grid-template-columns: 24px 1fr; gap: 12px; align-items: center; text-align: left;
+  width: 100%; padding: 13px 12px; background: rgba(255,255,255,.45);
+  border: 1px solid var(--rule); border-radius: 3px;
+  font-family: var(--serif); font-size: 16px; line-height: 1.3; color: var(--ink);
+  transition: background .15s, border-color .15s, transform .1s;
+}
+.opt:active { transform: scale(.99); }
+.opt .box { width: 22px; height: 22px; border: 1.5px solid var(--ink); border-radius: 2px; position: relative; background: #fffdf6; }
+.opt .box svg { position: absolute; left: -3px; top: -7px; width: 30px; height: 30px; overflow: visible; }
+.opt .box path { fill: none; stroke: var(--blue); stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 40; stroke-dashoffset: 40; }
+.opt.picked { background: var(--blue-soft); border-color: var(--blue); }
+.opt.picked .box path { animation: tick .28s ease-out forwards; }
+@keyframes tick { to { stroke-dashoffset: 0; } }
+.options.locked .opt:not(.picked) { opacity: .45; }
+.quiz-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; font-family: var(--mono); font-size: 12px; color: var(--ink-faint); }
+.back-link { background: none; border: 0; padding: 8px 0; font-family: var(--mono); font-size: 12.5px; color: var(--ink-soft); }
+.tg-back .back-link { visibility: hidden; }
+
+/* =========================================================
+   3. АНАЛИЗ (ЭКГ)
+   ========================================================= */
+.monitor { margin: 8px -6px 0; border: 1px solid var(--rule); background: #fbf7ee; border-radius: 2px; overflow: hidden; position: relative; }
+.monitor canvas { display: block; width: 100%; height: 170px; }
+.monitor .bpm { position: absolute; right: 8px; top: 6px; font-family: var(--mono); font-size: 12px; color: var(--ink-soft); }
+.monitor .bpm.hot { color: var(--red); }
+.an-title { font-family: var(--serif); font-weight: 700; font-size: 20px; margin: 18px 0 4px; text-align: center; }
+.an-status { font-family: var(--mono); font-size: 13.5px; text-align: center; min-height: 20px; color: var(--ink-soft); }
+.an-status.hot { color: var(--red); }
+.an-steps { list-style: none; padding: 0; margin: 16px 0 0; font-family: var(--mono); font-size: 12.5px; display: grid; gap: 6px; }
+.an-steps li { display: flex; justify-content: space-between; color: var(--ink-faint); }
+.an-steps li.ok { color: var(--ink); }
+.an-steps li.ok span:last-child::before { content: "✓ "; color: var(--blue); }
+
+/* =========================================================
+   4. МЕДЗАКЛЮЧЕНИЕ
+   ========================================================= */
+.doc { font-size: 15px; line-height: 1.5; }
+.doc h1 { font-family: var(--serif); font-size: 21px; letter-spacing: .06em; text-align: center; margin: 4px 0 8px; }
+.doc .meta { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-family: var(--mono); font-size: 12.5px; }
+.doc .about { text-align: center; font-style: italic; font-size: 13.5px; margin: 10px 0 12px; color: var(--ink-soft); }
+.field { display: flex; gap: 6px; align-items: baseline; margin: 3px 0; flex-wrap: wrap; }
+.field .k { white-space: nowrap; }
+.field .v { flex: 1; min-width: 120px; border-bottom: 1px dotted var(--ink-faint); font-family: var(--mono); font-size: 14px; padding: 0 2px; }
+/* Поле «Ф.И.О. пациента» в регистратуре: строка бланка, вписанная синими чернилами */
+.name-field { display: block; margin: 0 0 16px; }
+.name-label { display: block; font-family: var(--serif); font-weight: 700; font-size: 15px; }
+.name-field input {
+  display: block; width: 100%; margin-top: 2px; padding: 8px 2px 6px;
+  border: 0; border-bottom: 1.5px dotted var(--ink-faint); border-radius: 0; background: transparent; outline: none;
+  font-family: var(--mono); font-size: 17px; /* ≥16px, чтобы iOS не зумил страницу */
+  color: var(--blue); caret-color: var(--blue);
+}
+.name-field input::placeholder { color: var(--ink-faint); }
+.name-field input:focus { border-bottom-color: var(--blue); border-bottom-style: solid; }
+.name-hint { display: block; margin-top: 5px; font-family: var(--serif); font-style: italic; font-size: 12.5px; color: var(--ink-soft); }
+.doc p { margin: 9px 0; text-wrap: pretty; }
+.doc .lbl { font-weight: 700; }
+.doc ul { list-style: none; padding: 0; margin: 4px 0 0; }
+.doc ul li { padding-left: 1.2em; text-indent: -1.2em; margin: 2px 0; }
+.doc ul li::before { content: "— "; }
+.doc ol { margin: 4px 0 0; padding-left: 1.3em; }
+.doc ol li { margin: 3px 0; padding-left: 2px; }
+.diag {
+  margin: 12px 0; padding: 12px 12px; border-left: 3px solid var(--ink); background: rgba(255,255,255,.4);
+}
+.diag .name { font-weight: 700; font-size: 16.5px; line-height: 1.35; }
+.diag .code { font-family: var(--mono); font-size: 13px; margin-top: 4px; }
+.diag .co { font-size: 13.5px; color: var(--ink-soft); font-style: italic; margin-top: 6px; }
+.scores { font-family: var(--mono); font-size: 12.5px; margin-top: 4px; display: grid; gap: 3px; }
+.scores div { display: flex; align-items: baseline; gap: 6px; }
+.scores .dots { flex: 1; border-bottom: 1px dotted var(--ink-faint); transform: translateY(-3px); }
+.scores .hi { color: var(--blue); font-weight: 700; }
+.rx {
+  margin: 12px 0; padding: 14px 12px; border: 1.5px solid var(--ink); position: relative;
+}
+.rx::before { content: "Rp."; position: absolute; top: -10px; left: 10px; background: var(--paper); padding: 0 6px; font-style: italic; font-weight: 700; }
+.rx .track { font-family: var(--serif); font-weight: 700; font-size: 19px; line-height: 1.25; color: var(--blue); }
+.rx .why { font-size: 14px; color: var(--ink-soft); margin-top: 10px; font-style: italic; }
+.signs { position: relative; margin-top: 22px; padding-bottom: 6px; }
+.sign-row { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: end; margin: 14px 0 0; font-size: 14px; }
+.sign-row .line { border-bottom: 1px solid var(--ink); height: 30px; position: relative; }
+.sign-row .line svg { position: absolute; left: 6%; bottom: -6px; width: 92px; height: 42px; overflow: visible; }
+.sign-row .line path { fill: none; stroke: var(--blue); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: .9; }
+.mp { font-family: var(--serif); margin-top: 16px; font-weight: 700; }
+.stamp {
+  position: absolute; left: 18px; bottom: -62px; width: 168px; height: 168px;
+  opacity: 0; pointer-events: none; mix-blend-mode: multiply;
+}
+.stamp.on { animation: stampIn .5s cubic-bezier(.3,1.5,.5,1) forwards; }
+@keyframes stampIn {
+  0% { opacity: 0; transform: scale(1.9) rotate(-34deg); }
+  45% { opacity: .95; transform: scale(.94) rotate(-13deg); }
+  100% { opacity: .9; transform: scale(1) rotate(-14deg); }
+}
+.fineprint { font-size: 11.5px; color: var(--ink-faint); font-style: italic; margin-top: 64px; text-align: center; line-height: 1.4; }
+
+/* ---------- Оверлей сохранения ---------- */
+.overlay {
+  position: fixed; inset: 0; z-index: 50; background: rgba(12,12,14,.97);
+  display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
+}
+.overlay.on { display: flex; animation: screenIn .25s ease both; }
+.overlay img { max-width: 100%; max-height: calc(var(--vh) - 190px); border-radius: 6px; box-shadow: 0 10px 40px rgba(0,0,0,.5); -webkit-touch-callout: default; user-select: auto; }
+.overlay .hint { color: #e9e6dd; font-size: 13.5px; text-align: center; max-width: 320px; line-height: 1.4; }
+.overlay .actions { width: 100%; max-width: 360px; margin: 0; }
+.overlay .btn-ghost { color: #e9e6dd; border-color: rgba(255,255,255,.25); }
+.overlay .btn-primary { background: #f5f0e3; color: #1c1b18; }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px);
+  background: #1c1b18; color: #f5f0e3; font-size: 13.5px; padding: 10px 14px; border-radius: 10px;
+  opacity: 0; transition: .25s; z-index: 60; max-width: 88vw; text-align: center; pointer-events: none;
+}
+.toast.on { opacity: 1; transform: translateX(-50%); }
+
+@media (prefers-reduced-motion: reduce) {
+  .screen.active, .stamp.on, .sheet.shake { animation-duration: .01s !important; }
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- ================= 1. РЕГИСТРАТУРА ================= -->
+  <section class="screen active" id="s-start">
+    <div class="sheet">
+      <div class="ticket-top"><span data-t="ui.ticket"></span><span id="start-num"></span></div>
+      <hr class="double-rule">
+      <div class="inst" data-inst></div>
+      <div class="reg-label" data-t="ui.registry"></div>
+      <div class="logo">СДПН
+        <svg class="ecg-under" viewBox="0 0 300 34" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M0 22 H96 l6 -4 l5 4 h10 l4 7 l7 -27 l6 24 l4 -4 h20 l6 -3 l5 3 H198 l3 6 l5 -26 l4 30 l4 -18 l4 14 l3 -9 l3 5 H300" fill="none" stroke="#c4302b" stroke-width="1.6" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="decode" id="decode"></div>
+      <div class="call" id="call"></div>
+      <label class="name-field" for="name-input">
+        <span class="name-label" data-t="ui.nameLabel"></span>
+        <input id="name-input" type="text" maxlength="40" autocomplete="name" autocapitalize="words" spellcheck="false" enterkeyhint="go">
+        <span class="name-hint" id="name-hint"></span>
+      </label>
+      <div class="doctor-line"><span data-t="ui.cabinet"></span><span>Дата: <span class="glitch" data-glitch></span></span></div>
+      <div class="actions"><button class="btn btn-primary mb-dup" id="btn-start" data-t="ui.startBtn"></button></div>
+    </div>
+    <p class="disclaimer" data-t="ui.disclaimer"></p>
+  </section>
+
+  <!-- ================= 2. АНКЕТА ================= -->
+  <section class="screen" id="s-quiz">
+    <div class="sheet" id="quiz-sheet">
+      <div class="card-head"><span data-t="ui.cardTitle"></span><span id="q-page"></span></div>
+      <div class="pages" id="pages"></div>
+      <div class="q-num" id="q-num"></div>
+      <div class="q-text" id="q-text"></div>
+      <div class="q-hint" id="q-hint"></div>
+      <div class="options" id="options"></div>
+      <div class="quiz-foot"><button class="back-link" id="btn-back" data-t="ui.back"></button><span id="q-card-no"></span></div>
+    </div>
+  </section>
+
+  <!-- ================= 3. АНАЛИЗ ================= -->
+  <section class="screen" id="s-analysis">
+    <div class="sheet">
+      <div class="card-head"><span data-t="ui.lab"></span><span class="glitch" data-glitch></span></div>
+      <div class="monitor"><canvas id="ecg"></canvas><div class="bpm" id="bpm">ЧСС: 60</div></div>
+      <div class="an-title" data-t="ui.analysisTitle"></div>
+      <div class="an-status" id="an-status"></div>
+      <ul class="an-steps" id="an-steps"></ul>
+    </div>
+  </section>
+
+  <!-- ================= 4. МЕДЗАКЛЮЧЕНИЕ ================= -->
+  <section class="screen" id="s-result">
+    <div class="sheet doc" id="doc"></div>
+    <div class="actions">
+      <button class="btn btn-ink mb-dup" id="btn-rx" data-t="ui.acceptBtn"></button>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-story" data-t="ui.storyBtn"></button>
+        <button class="btn btn-primary" id="btn-save" data-t="ui.saveBtn"></button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="btn-again" data-t="ui.againBtn"></button>
+        <button class="btn btn-ghost" id="btn-channel" data-t="ui.channelBtn"></button>
+      </div>
+    </div>
+    <p class="disclaimer" data-t="ui.disclaimer"></p>
+  </section>
+</div>
+
+<!-- Оверлей: готовая картинка-заключение -->
+<div class="overlay" id="overlay">
+  <img id="ov-img" alt="Медицинское заключение">
+  <div class="hint" id="ov-hint"></div>
+  <div class="actions">
+    <button class="btn btn-primary" id="ov-download" data-t="ui.download"></button>
+    <button class="btn btn-ghost" id="ov-close" data-t="ui.close"></button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================================
+   ВСЕ ТЕКСТЫ И НАСТРОЙКИ — ЗДЕСЬ.
+   Правьте смело: структура объясняется в комментариях.
+   ===================================================================== */
+const CONTENT = {
+
+  /* ---------- Ссылки (заполните перед публикацией) ---------- */
+  links: {
+    channel: '',            // ссылка на канал, например 'https://t.me/troetochie'
+    miniApp: '',            // прямая ссылка на мини-приложение 'https://t.me/<бот>/<app>' — пойдёт виджетом в сторис
+    // Папка с готовыми картинками для сторис (относительно index.html).
+    // Telegram берёт картинку для shareToStory только по публичной https-ссылке, поэтому они лежат рядом.
+    stories: 'stories/',
+  },
+
+  artist: 'ТРОЕТОЧИЕ',
+
+  /* ---------- Учреждение ---------- */
+  inst: {
+    ministry: 'МИНИСТЕРСТВО ЗВУКОВОГО ЗДРАВООХРАНЕНИЯ',
+    center: 'Центр музыкальной психотерапии «СДПН»',
+    dept: 'Отделение аудиальной терапии',
+    city: 'г. Владивосток',
+    doctor: 'Я.Д. Горох',
+    head: 'М.А. Мягков',
+    glitchDate: '*#.^?.2027',
+  },
+
+  /* ---------- Интерфейс ---------- */
+  ui: {
+    ticket: 'ТАЛОН НА ПРИЁМ',
+    registry: 'Р Е Г И С Т Р А Т У Р А',
+    decode: [
+      ['Синдром Дефицита Психической Нестабильности', 'диагноз'],
+      ['Сборник Для Психически Нестабильных', 'лечение'],
+    ],
+    callTitle: 'Пациент, пройдите обследование.',
+    callText: 'Приём займёт около двух минут. Отвечайте честно: ответ «нормально» в нашем учреждении не принимается.',
+    cabinet: 'Кабинет № 25 · врач Я.Д. Горох',
+    startBtn: 'Начать приём',
+    cardTitle: 'Медицинская карта',
+    page: (i, n) => `Лист ${i} из ${n}`,
+    qNum: (i) => `Вопрос № ${i}`,
+    hint: 'Отметьте один вариант.',
+    back: '← Назад',
+    lab: 'Лаборатория',
+    analysisTitle: 'Обработка результатов',
+    analysisSteps: [
+      [0.0, 'Регистрация пульса…', 'Пульс'],
+      [0.45, 'Расшифровка показателей…', 'Показатели'],
+      [0.9, 'Сверка с медкартой…', 'Медкарта'],
+      [1.3, 'Обнаружена нестабильность', 'Нестабильность'],
+      [1.95, 'Заключение готово', 'Заключение'],
+    ],
+    acceptBtn: 'Принять назначение',
+    storyBtn: 'В сторис',
+    saveBtn: 'Сохранить',
+    againBtn: 'Пересдать',
+    channelBtn: 'Канал',
+    download: 'Скачать',
+    close: 'Закрыть',
+    nameLabel: 'Ф.И.О. пациента:',
+    namePlaceholder: 'Неизвестно',
+    nameHintTg: 'Данные получены из Telegram. Можно исправить или стереть.',
+    nameHint: 'Можно не заполнять: в заключении будет «Неизвестно».',
+    saveHint: 'Удерживайте изображение, чтобы сохранить его в галерею.',
+    storyFallbackHint: 'Сохраните картинку и опубликуйте её в сторис вручную. Назначение вступает в силу с момента публикации.',
+    storyText: 'Мне поставили диагноз. Пройди обследование и ты.',
+    noLink: 'Препарат ещё не поступил в аптеки. Следите за каналом.',
+    noChannel: 'Ссылка на канал появится позже.',
+    preparing: 'Оформляем документ…',
+    disclaimer: 'Обследование вымышлено и является частью художественного замысла альбома. Это не психологический тест. Если вам действительно тяжело — обратитесь к специалисту.',
+    docFooter: 'Документ является частью художественного замысла и не является медицинским заключением.',
+  },
+
+  /* ---------- Шкалы ----------
+     Каждый ответ даёт баллы по шкалам. Баллы делятся на максимум,
+     который шкала может набрать в анкете, — так «редкие» шкалы
+     не проигрывают «частым». Побеждает наибольшая доля.
+     order — порядок при ничьей (ремиссия последней, её надо заслужить). */
+  scales: {
+    numb:  { label: 'Эмоциональное онемение' },
+    mask:  { label: 'Маскировка' },
+    chaos: { label: 'Нестабильность' },
+    past:  { label: 'Ностальгия' },
+    night: { label: 'Ночная активность' },
+    love:  { label: 'Сердечная зависимость' },
+    calm:  { label: 'Равновесие' },
+  },
+  scaleOrder: ['numb', 'mask', 'chaos', 'past', 'night', 'love', 'calm'],
+
+  /* ---------- Анкета ----------
+     q — вопрос, options — [текст, {шкала: баллы}].
+     Порядок вариантов перемешивается при каждом приёме. */
+  questions: [
+    { q: 'Как часто на вопрос «как дела?» вы отвечаете «нормально», не задумываясь?',
+      options: [
+        ['Всегда. Это уже рефлекс.',                     { numb: 2 }],
+        ['Часто. Хотя на самом деле не нормально.',      { mask: 2 }],
+        ['Редко. Отвечаю честно, и это надолго.',        { chaos: 2 }],
+        ['Когда правда нормально.',                      { calm: 2 }],
+      ] },
+    { q: 'Опишите ваше обычное утро.',
+      options: [
+        ['Будильник, кофе, автопилот.',                  { numb: 2 }],
+        ['Тяжёлое. Ночью опять не спалось.',             { night: 2 }],
+        ['Улыбаюсь так, будто всё в порядке.',           { mask: 2 }],
+        ['Обычное. Иногда даже доброе.',                 { calm: 2 }],
+      ] },
+    { q: 'Что чаще всего мешает вам уснуть?',
+      options: [
+        ['Ничего. Сплю по расписанию.',                  { numb: 1, calm: 1 }],
+        ['Мысли. Они не выключаются.',                   { night: 2 }],
+        ['Переписка, которую не стоило начинать.',       { love: 2 }],
+        ['Воспоминания.',                                { past: 2 }],
+      ] },
+    { q: 'Когда вы плакали в последний раз?',
+      options: [
+        ['Не помню. Давно.',                             { numb: 2 }],
+        ['Недавно. Тихо, чтобы никто не услышал.',       { mask: 2 }],
+        ['Недавно. Из-за человека.',                     { love: 2 }],
+        ['Под музыку. Это считается?',                   { calm: 1, chaos: 1 }],
+      ] },
+    { q: 'Чем для вас является ночь?',
+      options: [
+        ['Временем для сна.',                            { numb: 1, calm: 1 }],
+        ['Единственным временем, когда можно быть собой.', { night: 2 }],
+        ['Временем для двоих.',                          { love: 1, night: 1 }],
+        ['Поводом выйти туда, где громко.',              { chaos: 2 }],
+      ] },
+    { q: 'Если бы можно было вернуться на несколько лет назад, вы бы…',
+      options: [
+        ['Вернулись без раздумий.',                      { past: 2 }],
+        ['Сказали кому-то то, что не успели.',           { past: 1, love: 1 }],
+        ['Ничего бы не меняли.',                         { calm: 2 }],
+        ['Не знаю. Мне, в целом, всё равно.',            { numb: 2 }],
+      ] },
+    { q: 'Как вы относитесь к окружающим людям?',
+      options: [
+        ['Ровно. Без особых чувств.',                    { numb: 2 }],
+        ['Я среди людей, но не с ними.',                 { mask: 2 }],
+        ['Они оказались не такими, какими казались.',    { love: 1, past: 1 }],
+        ['Есть несколько человек, ради которых всё.',    { calm: 2 }],
+      ] },
+    { q: 'Опишите вашу последнюю влюблённость одним словом.',
+      options: [
+        ['Пожар.',                                       { chaos: 1, love: 1 }],
+        ['Зависимость.',                                 { love: 2 }],
+        ['Давно не было.',                               { numb: 2 }],
+        ['Тепло.',                                       { calm: 2 }],
+      ] },
+    { q: 'Как часто вам хочется всё бросить и уехать?',
+      options: [
+        ['Постоянно. Сумка почти собрана.',              { chaos: 2 }],
+        ['Хочется, но я этого не сделаю.',               { mask: 2 }],
+        ['Не хочется. Ничего не хочется.',               { numb: 2 }],
+        ['Иногда. Тогда я еду к морю.',                  { calm: 2 }],
+      ] },
+    { q: 'Как вы обычно слушаете музыку?',
+      options: [
+        ['Фоном, чтобы не было тишины.',                 { numb: 2 }],
+        ['Одни и те же треки уже несколько лет.',        { past: 2 }],
+        ['Ночью, в наушниках, на полную.',               { night: 1, chaos: 1 }],
+        ['Каждая песня — про кого-то.',                  { love: 2 }],
+      ] },
+  ],
+
+  /* ---------- Треки ----------
+     url — ссылка на трек (Яндекс Музыка, VK, Spotify, пост в канале…).
+     Пока ссылки нет, кнопка «Принять назначение» ведёт в канал.
+     why — обоснование назначения в заключении. */
+  tracks: {
+    zombie:    { title: 'ВЫГЛЯЖУ КАК ЗОМБИ', url: '',
+      why: 'Препарат прямого действия. Содержит признание «во мне нету ничего живого», что позволяет пациенту услышать собственное состояние со стороны. Продолжительность около минуты рассчитана на пациентов, не способных долго удерживать внимание на чувствах.' },
+    brosit:    { title: 'БРОСИТЬ ВСЕ ЭТО НАХУЙ', url: '',
+      why: 'Назначается при хронической усталости от необходимости держаться. Препарат фиксирует состояние «мне не грустно, мне не весело» и выводит его наружу через многократное повторение одной формулировки. Принимать, не подбирая более приличных слов.' },
+    slezy:     { title: 'ПОЛЬЮТСЯ СЛЁЗЫ', url: '',
+      why: 'Препарат содержит второй голос, который комментирует и опровергает слова основного. Рекомендован пациентам, привыкшим говорить «всё хорошо», когда внутренний комментатор с этим не согласен.' },
+    drug:      { title: 'ЛУЧШИЙ ДРУГ', url: '',
+      why: 'Назначается при разделении личности на ту, что улыбается, и ту, что не спит. Позволяет познакомиться со второй стороной в безопасной обстановке, через наушники. Совпадение голосов является нормой.' },
+    monolog:   { title: 'МОНОЛОГ', url: '',
+      why: 'Короткий препарат (около двадцати секунд) для пациентов, запертых изнутри. Доза подобрана так, чтобы приоткрыть замок, не снимая его полностью.' },
+    nenavizhu: { title: 'НЕНАВИЖУ ПРОСЫПАТЬСЯ', url: '',
+      why: 'Назначается при сочетании внешнего веселья и внутреннего онемения («я год уже не плакал»). Высокий темп препарата соответствует темпу жизни пациента. Текст припева принимать как симптом, а не как инструкцию.' },
+    choker:    { title: 'ЧОКЕР (при уч. «Дожить до мая»)', url: '',
+      why: 'Совместная разработка с лабораторией «Дожить до мая». Назначается пациентам, у которых ночная жизнь громче дневной. Препарат описывает пустоту за ярким фасадом и помогает её заметить.' },
+    kuski:     { title: 'РАЗЛЕТЯТСЯ НА КУСКИ', url: '',
+      why: 'Препарат контрастного действия: беззаботное «на-на-на» поверх тяжёлого текста. Назначается пациентам, у которых снаружи праздник, а внутри — нет. Применяется для распознавания этого несоответствия, а не для его поддержания.' },
+    vremya:    { title: 'ВРЕМЯ НЕ ВЕРНУТЬ', url: '',
+      why: 'Основной препарат при ностальгическом синдроме. Содержит подъезды, первые сигареты и скрытый профиль ВКонтакте. Заключительная рекомендация трека — «тогда живи прямо сейчас» — является обязательной частью курса.' },
+    dyshat:    { title: 'ЗАБЫВАЛ ДЫШАТЬ', url: '',
+      why: 'Назначается пациентам, которые не успели что-то сказать. Препарат высокой интенсивности: во время приёма допускается задержка дыхания, что соответствует названию.' },
+    dvadcat:   { title: 'ДВАДЦАТЬ', url: '',
+      why: 'Назначается при синдроме «всё так же, как в восемнадцать». Подходит пациентам с прокрастинацией и сложными отношениями с собственной кроватью. Действующее вещество: «меня не учили сдаваться».' },
+    nemogu:    { title: 'НЕ МОГУ СПАТЬ', url: '',
+      why: 'Препарат для пациентов с непрерывным ночным монологом. Короткий курс (около двадцати пяти секунд) рассчитан на приём в момент, когда мысли не дают уснуть.' },
+    lublu:     { title: 'Я ЛЮБЛЮ ТЕБЯ', url: '',
+      why: 'Назначается при ночной форме с сохранной способностью любить. Самый мягкий препарат альбома: ночь, комната на двоих, фонари вдали. Принимать вдвоём; допускается приём в одиночестве с мыслями о ком-то.' },
+    balkon:    { title: 'Я ЗАКУРЮ НА БАЛКОНЕ', url: '',
+      why: 'Короткий препарат вечернего действия. Назначается пациентам, которые задают себе вопрос «что с нами завтра будет?» и не получают ответа. Курение в курс лечения не входит: достаточно балкона.' },
+    letat:     { title: 'НАУЧИТЬСЯ ЛЕТАТЬ', url: '',
+      why: 'Основной препарат поддерживающей терапии. Произведён в г. Артём, 25-й регион. Содержит формулу «не бойся делать то, что хочешь, бойся своих страхов». Рекомендован пациентам, которые уже умеют летать, но ещё не научились падать.' },
+    lyudi:     { title: 'ЛЮДИ НЕ ТАКИЕ УЖ ПРЕКРАСНЫЕ', url: '',
+      why: 'Назначается для профилактики идеализации окружающих. Препарат возвращает трезвый взгляд на людей, «придуманных в голове». Побочный эффект: временное раздражение в адрес бывших.' },
+    oesli:     { title: 'О ЕСЛИ БЫ ТЫ ЗНАЛА', url: '',
+      why: 'Назначается при зависимости от человека, сопоставимой по силе с никотиновой. Препарат констатирует, что Минздрав предупреждал обо всём, кроме этого человека. Центр звукового здравоохранения восполняет этот пробел.' },
+    krov:      { title: 'КРОВЬ ПО РУКАМ', url: '',
+      why: 'Назначается пациентам, которые уходят по-английски и называют это заботой о себе. Препарат рассматривает ситуацию с обеих сторон. Рекомендован к приёму до блокировки контакта, а не после.' },
+    pobogache: { title: 'ПОБОГАЧЕ', url: '',
+      why: 'Назначается при остром приступе ревности на фоне финансовой нестабильности. Препарат содержит план восстановления «прямо с колен». Рукоприкладство в курс лечения не входит.' },
+  },
+
+  /* ---------- Формы диагноза ----------
+     scale — какая шкала ведёт к форме.
+     pick  — какой трек назначить в зависимости от ВТОРОЙ по силе шкалы.
+     main  — трек по умолчанию (если второй шкалы нет). */
+  forms: [
+    { scale: 'numb', code: 'СДПН-01',
+      name: 'СДПН — Синдром Дефицита Психической Нестабильности, хроническое течение (стабильная форма)',
+      short: 'Хроническое течение',
+      complaints: 'на эмоциональную пустоту, отсутствие ярких переживаний, ощущение «жизни на автопилоте». Со слов пациента, «всё нормально, и это пугает».',
+      anamnesis: 'в прошлом отмечались периоды выраженной эмоциональной нестабильности, бессонницы и импульсивных решений. В настоящее время состояние стабилизировалось, однако пациент отмечает утрату ощущения подлинности переживаний. Ухудшение связывает со взрослением.',
+      objective: 'сознание ясное, ориентирован во времени и пространстве. Внешне спокоен, социально адаптирован, на контакт идёт формально. Речь ровная, интонационно обеднённая. На вопрос о самочувствии отвечает «нормально» до окончания вопроса.',
+      picture: ['эмоциональное притупление;', 'стереотипный ответ «всё нормально»;', 'прослушивание музыки фоном, «чтобы не было тишины»;', 'снижение творческой активности.'],
+      regimen: 'ежедневно, предпочтительно в ночное время, на высокой громкости.',
+      duration: 'до восстановления эмоциональной нестабильности.',
+      contra: 'притворство, подавление чувств, ложные заверения в собственном благополучии.',
+      prognosis: 'благоприятный при соблюдении назначения. Первые признаки нестабильности ожидаются ко второму прослушиванию.',
+      main: 'zombie',
+      pick: { mask: 'brosit', night: 'brosit', past: 'brosit', chaos: 'zombie', love: 'zombie', calm: 'zombie' } },
+
+    { scale: 'mask', code: 'СДПН-02',
+      name: 'СДПН, латентная форма (компенсированная маской)',
+      short: 'Латентная форма',
+      complaints: 'на постоянное внутреннее напряжение при внешнем благополучии. Со слов пациента, «всё нормально, просто много дел».',
+      anamnesis: 'длительное время успешно скрывает своё состояние от окружающих, а также от себя. Слёзы откладываются до более подходящего момента. Подходящий момент не наступает.',
+      objective: 'сознание ясное. Улыбка опережает ответ примерно на 0,3 секунды. Отмечается напряжение жевательной мускулатуры. При слове «честно» отводит взгляд.',
+      picture: ['маскировка эмоций;', 'отложенные слёзы с неопределённым сроком;', 'внутренний монолог без выхода наружу;', 'повышенная вежливость в состоянии усталости.'],
+      regimen: 'ежедневно, в одиночестве, в момент, когда никто не видит.',
+      duration: 'до первого честного ответа на вопрос «как дела?».',
+      contra: 'фразы «да ладно, переживу» и «не бери в голову», прослушивание с убавленным звуком, чтобы никто не услышал.',
+      prognosis: 'благоприятный. При снятии маски возможен кратковременный эмоциональный выброс, что и является целью лечения.',
+      main: 'slezy',
+      pick: { love: 'slezy', calm: 'slezy', chaos: 'drug', past: 'drug', night: 'monolog', numb: 'monolog' } },
+
+    { scale: 'chaos', code: 'СДПН-03',
+      name: 'Острая психическая нестабильность, выраженный эпизод',
+      short: 'Острая нестабильность',
+      complaints: 'на избыток чувств, нарушение сна и решения, принятые быстрее, чем обдуманы. Со слов пациента, «всё сразу».',
+      anamnesis: 'эмоциональный фон нестабилен с подросткового возраста. Периоды затишья непродолжительны и вызывают у пациента подозрение.',
+      objective: 'возбуждён, речь ускорена. Ориентирован во времени частично: путает «уже поздно» и «ещё рано». На громкие звуки реагирует оживлением.',
+      picture: ['эмоциональная гиперреактивность;', 'импульсивные решения;', 'прослушивание музыки на предельной громкости;', 'искренность в неподходящие моменты.'],
+      regimen: 'по необходимости, при каждом приступе «всё сразу». Громкость — на усмотрение пациента (как правило, максимальная).',
+      duration: 'бессрочно. Курс сопровождает состояние, а не устраняет его.',
+      contra: 'тишина, советы «успокойся», попытки быть «как все».',
+      prognosis: 'состояние не требует устранения, только сопровождения. Пациент жив в полной мере, что в практике центра встречается редко.',
+      main: 'nenavizhu',
+      pick: { numb: 'nenavizhu', night: 'nenavizhu', love: 'choker', calm: 'choker', mask: 'kuski', past: 'kuski' } },
+
+    { scale: 'past', code: 'СДПН-04',
+      name: 'Ностальгический синдром (ретроградная форма СДПН)',
+      short: 'Ностальгический синдром',
+      complaints: 'на ощущение, что лучшая версия себя осталась в прошлом. Со слов пациента, «раньше было хуже, но лучше».',
+      anamnesis: 'отмечает период ярких переживаний в юности: подъезды, ночные разговоры, первые решения. Ухудшение связывает со взрослением и переездом прошлого в архив.',
+      objective: 'взгляд направлен в прошлое, ориентировочно на 5–7 лет. При звуках определённых треков отмечается выраженное оживление. Память на детали прошлого избыточна.',
+      picture: ['идеализация периодов нестабильности;', 'регулярный просмотр старых фотографий;', 'плейлист, не обновлявшийся несколько лет;', 'сравнение себя с прежним собой не в свою пользу.'],
+      regimen: 'вечером, в одиночестве, без старых фотографий в поле зрения.',
+      duration: 'до появления воспоминания, созданного сегодня.',
+      contra: 'пересмотр старых переписок без сопровождения альбома, фраза «это уже не вернуть».',
+      prognosis: 'благоприятный. Прежняя версия пациента не утрачена, а находится на хранении.',
+      main: 'vremya',
+      pick: { night: 'vremya', love: 'vremya', chaos: 'dyshat', mask: 'dyshat', numb: 'dvadcat', calm: 'dvadcat' } },
+
+    { scale: 'night', code: 'СДПН-05',
+      name: 'СДПН, ночная форма (циркадный подтип)',
+      short: 'Ночная форма',
+      complaints: 'на ощущение, что настоящая жизнь начинается после 01:00, а днём проходит её репетиция.',
+      anamnesis: 'нарушение сна носит хронический характер. С потолком своей комнаты пациент знаком лучше, чем с некоторыми родственниками.',
+      objective: 'днём сдержан, малоразговорчив. К ночи оживляется. Ориентирован во времени избирательно: точно знает время рассвета и последнего автобуса.',
+      picture: ['инверсия эмоционального ритма;', 'ночной монолог, не поддающийся отключению;', 'откровенность после полуночи;', 'утренняя амнезия на принятые ночью решения.'],
+      regimen: 'строго в ночное время, в наушниках, при выключенном свете.',
+      duration: 'до первого рассвета, встреченного не в одиночестве.',
+      contra: 'дневное прослушивание, фраза «ложись уже спать», ранний отход ко сну без уважительной причины.',
+      prognosis: 'благоприятный. Дневная часть жизни сохраняет социальную функцию.',
+      main: 'nemogu',
+      pick: { mask: 'nemogu', chaos: 'nemogu', love: 'lublu', calm: 'lublu', numb: 'balkon', past: 'balkon' } },
+
+    { scale: 'love', code: 'СДПН-06',
+      name: 'Острая любовная интоксикация (кардиальная форма СДПН)',
+      short: 'Любовная интоксикация',
+      complaints: 'на зависимость от конкретного человека, бессонницу после переписок и невозможность «завязать». Со слов пациента, «в этот раз всё будет иначе».',
+      anamnesis: 'неоднократные попытки бросить. Периоды ремиссии длятся до первого сообщения.',
+      objective: 'проверяет телефон с частотой, превышающей норму. При упоминании определённого имени отмечается тахикардия. Критичность к объекту влечения снижена.',
+      picture: ['зависимость от конкретного человека;', 'идеализация объекта влечения;', 'ночные сообщения, о которых утром жалеют;', 'уверенность, что «в этот раз всё будет иначе».'],
+      regimen: 'при каждом желании написать первым. Прослушивать вместо отправки сообщения.',
+      duration: 'до момента, когда имя в уведомлениях перестанет вызывать тахикардию.',
+      contra: 'чтение старых переписок, фраза «я просто спрошу, как дела», сочетание алкоголя с перепиской.',
+      prognosis: 'сомнительный, но обнадёживающий. Минздрав предупреждал, однако про этого человека писать не стал.',
+      main: 'oesli',
+      pick: { night: 'oesli', past: 'oesli', numb: 'krov', mask: 'krov', chaos: 'pobogache', calm: 'pobogache' } },
+
+    { scale: 'calm', code: 'СДПН-07',
+      name: 'СДПН в стадии стойкой ремиссии',
+      short: 'Ремиссия',
+      complaints: 'активных жалоб не предъявляет, что само по себе подозрительно.',
+      anamnesis: 'в анамнезе — эпизоды нестабильности различной степени тяжести. На текущий момент равновесие найдено. Источник равновесия пациент раскрывать отказывается.',
+      objective: 'эмоциональные реакции соответствуют ситуации. Способен сказать «плохо», когда плохо. Это вызывает у персонала профессиональное беспокойство.',
+      picture: ['сохранная способность чувствовать;', 'умеренная импульсивность;', 'тёплая ностальгия без рецидивов;', 'осознанное прослушивание музыки.'],
+      regimen: 'по желанию, в любое время суток. Допускается прослушивание в хорошем настроении.',
+      duration: 'поддерживающий курс, бессрочно.',
+      contra: 'злоупотребление стабильностью, слишком частая фраза «у меня всё под контролем».',
+      prognosis: 'благоприятный. Рекомендовано наблюдение. Злоупотребление стабильностью может привести к переходу в форму СДПН-01.',
+      main: 'letat',
+      pick: { chaos: 'letat', night: 'letat', past: 'letat', numb: 'letat', love: 'lyudi', mask: 'lyudi' } },
+  ],
+};
+
+/* =====================================================================
+   ДАЛЬШЕ — ЛОГИКА. Тексты выше, здесь их трогать не нужно.
+   ===================================================================== */
+
+/* ---------- Telegram ---------- */
+const tg = window.Telegram && window.Telegram.WebApp;
+// Объект WebApp есть и в обычном браузере (скрипт загружен), но initData там пустой.
+const IN_TG = !!(tg && tg.initData);
+const tgv = (v) => IN_TG && tg.isVersionAtLeast && tg.isVersionAtLeast(v);
+
+const haptic = {
+  tap()   { try { IN_TG && tg.HapticFeedback.selectionChanged(); } catch (e) {} },
+  thud()  { try { IN_TG ? tg.HapticFeedback.impactOccurred('heavy') : navigator.vibrate && navigator.vibrate(30); } catch (e) {} },
+  light() { try { IN_TG && tg.HapticFeedback.impactOccurred('light'); } catch (e) {} },
+  ok()    { try { IN_TG && tg.HapticFeedback.notificationOccurred('success'); } catch (e) {} },
+};
+
+function applyTheme() {
+  if (!IN_TG) return;
+  const p = tg.themeParams || {};
+  const r = document.documentElement.style;
+  if (p.bg_color) r.setProperty('--bg', p.secondary_bg_color || p.bg_color);
+  if (p.text_color) r.setProperty('--bg-text', p.text_color);
+  if (p.hint_color) r.setProperty('--bg-hint', p.hint_color);
+  // основные кнопки остаются «чернильными»: так бланк смотрится цельно в обеих темах
+  const dark = tg.colorScheme === 'dark';
+  r.setProperty('--btn', dark ? '#f5f0e3' : '#1c1b18');
+  r.setProperty('--btn-text', dark ? '#1c1b18' : '#f5f0e3');
+  try {
+    const bg = p.secondary_bg_color || p.bg_color;
+    if (tgv('6.1') && bg) { tg.setHeaderColor(bg); tg.setBackgroundColor(bg); }
+  } catch (e) {}
+}
+
+if (IN_TG) {
+  document.documentElement.classList.add('tg');
+  document.body.classList.add('tg-main', 'tg-back');
+  tg.ready();
+  tg.expand();
+  try { if (tgv('7.7')) tg.disableVerticalSwipes(); } catch (e) {} // чтобы прокрутка бланка не сворачивала приложение
+  applyTheme();
+  tg.onEvent('themeChanged', applyTheme);
+}
+
+/* Главная кнопка: в Telegram — MainButton, в браузере — кнопка на странице */
+let mainHandler = null;
+function setMain(text, handler, color) {
+  if (!IN_TG) return;
+  if (mainHandler) tg.MainButton.offClick(mainHandler);
+  mainHandler = handler;
+  if (!handler) { tg.MainButton.hide(); return; }
+  tg.MainButton.setParams({ text, color: color || (tg.colorScheme === 'dark' ? '#f5f0e3' : '#1c1b18'),
+    text_color: color ? '#ffffff' : (tg.colorScheme === 'dark' ? '#1c1b18' : '#f5f0e3'), is_visible: true, is_active: true });
+  tg.MainButton.onClick(handler);
+}
+let backHandler = null;
+function setBack(handler) {
+  if (!IN_TG) return;
+  if (backHandler) tg.BackButton.offClick(backHandler);
+  backHandler = handler;
+  if (handler) { tg.BackButton.onClick(handler); tg.BackButton.show(); } else tg.BackButton.hide();
+}
+
+function openUrl(url) {
+  if (!url) return false;
+  if (IN_TG) {
+    if (/^https:\/\/t\.me\//i.test(url)) tg.openTelegramLink(url); else tg.openLink(url);
+  } else window.open(url, '_blank', 'noopener');
+  return true;
+}
+
+/* ---------- Мелкие утилиты ---------- */
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const get = (path) => path.split('.').reduce((o, k) => o && o[k], CONTENT);
+const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 2600); }
+function alertMsg(msg) { if (IN_TG && tgv('6.2')) tg.showAlert(msg); else toast(msg); }
+
+/* ---------- Состояние ---------- */
+const state = {
+  number: '',          // СДПН-XXX
+  qOrder: [],          // перемешанный порядок вариантов для каждого вопроса
+  answers: [],         // индекс выбранного варианта (в исходном порядке)
+  qi: 0,
+  result: null,
+  name: '',            // имя пациента из поля в регистратуре
+};
+const tgName = IN_TG && tg.initDataUnsafe && tg.initDataUnsafe.user
+  ? [tg.initDataUnsafe.user.first_name, tg.initDataUnsafe.user.last_name].filter(Boolean).join(' ') : '';
+const patientName = () => state.name.replace(/\s+/g, ' ').trim() || 'Неизвестно';
+state.name = tgName; // по умолчанию — имя из профиля Telegram
+
+/* Поле имени в регистратуре */
+const nameInput = $('#name-input');
+nameInput.value = state.name;
+nameInput.placeholder = CONTENT.ui.namePlaceholder;
+$('#name-hint').textContent = tgName ? CONTENT.ui.nameHintTg : CONTENT.ui.nameHint;
+nameInput.addEventListener('input', () => { state.name = nameInput.value; });
+nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { nameInput.blur(); startQuiz(); } });
+
+function newNumber() { return 'СДПН-' + String(2 + Math.floor(Math.random() * 998)).padStart(3, '0'); }
+
+/* ---------- Глитч-дата ----------
+   Базовая строка «*#.^?.2027». Символы до года периодически подменяются,
+   изредка на мгновение проступает «настоящая» (но невозможная) дата. */
+const GLITCH_CHARS = '*#^?%&@!§¿0123456789';
+const FAKE_DATES = ['31.02.2027', '00.13.2027', '32.##.2027', '29.02.2027'];
+function mountGlitch(el) {
+  const base = CONTENT.inst.glitchDate;
+  el.innerHTML = [...base].map((c) => `<span class="g">${esc(c)}</span>`).join('');
+  const spans = [...el.children];
+  const mutable = spans.map((s, i) => i).filter((i) => i < base.length - 4 && base[i] !== '.');
+  setInterval(() => {
+    if (!el.isConnected || document.hidden) return;
+    if (Math.random() < 0.06) {               // редкая «правдоподобная» дата
+      const fake = FAKE_DATES[Math.floor(Math.random() * FAKE_DATES.length)];
+      spans.forEach((s, i) => { s.textContent = fake[i] || ''; s.classList.add('hot'); });
+      setTimeout(() => spans.forEach((s, i) => { s.textContent = base[i]; s.classList.remove('hot'); }), 160);
+      return;
+    }
+    const i = mutable[Math.floor(Math.random() * mutable.length)];
+    const s = spans[i];
+    s.textContent = GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)];
+    s.classList.toggle('hot', Math.random() < 0.3);
+    setTimeout(() => { s.textContent = base[i]; s.classList.remove('hot'); }, 90 + Math.random() * 120);
+  }, 220);
+}
+
+/* ---------- Экраны ---------- */
+function show(id) {
+  document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('active', s.id === id));
+  window.scrollTo(0, 0);
+}
+
+function instHTML() {
+  const i = CONTENT.inst;
+  return `<div class="l1">${esc(i.ministry)}</div><div class="l2">${esc(i.center)}</div><div class="l3">${esc(i.dept)}</div>`;
+}
+
+/* ===== 1. Регистратура ===== */
+function renderStart() {
+  state.number = newNumber();
+  $('#start-num').textContent = '№ ' + state.number;
+  $('#decode').innerHTML = CONTENT.ui.decode.map((d, i) =>
+    `<div><span class="n">${i + 1}.</span><span>${esc(d[0])}<em>— ${esc(d[1])}</em></span></div>`).join('');
+  $('#call').innerHTML = `<b>${esc(CONTENT.ui.callTitle)}</b>${esc(CONTENT.ui.callText)}`;
+  show('s-start');
+  setBack(null);
+  setMain(CONTENT.ui.startBtn.toUpperCase(), startQuiz);
+}
+
+/* ===== 2. Анкета ===== */
+function startQuiz() {
+  haptic.tap();
+  state.name = nameInput.value;
+  nameInput.blur();
+  state.answers = [];
+  state.qi = 0;
+  state.qOrder = CONTENT.questions.map((q) => shuffle(q.options.map((_, i) => i)));
+  setMain(null);
+  setBack(prevQuestion);
+  show('s-quiz');
+  renderQuestion();
+}
+
+const TICK = '<svg viewBox="0 0 30 30"><path d="M5 17 L12 24 L27 3"/></svg>';
+function renderQuestion() {
+  const n = CONTENT.questions.length, i = state.qi, q = CONTENT.questions[i];
+  $('#q-page').textContent = CONTENT.ui.page(i + 1, n);
+  $('#pages').innerHTML = Array.from({ length: n }, (_, k) => `<span class="${k < i ? 'done' : k === i ? 'now' : ''}"></span>`).join('');
+  $('#q-num').textContent = CONTENT.ui.qNum(i + 1);
+  $('#q-text').textContent = q.q;
+  $('#q-hint').textContent = CONTENT.ui.hint;
+  $('#q-card-no').textContent = state.number;
+  const box = $('#options');
+  box.classList.remove('locked');
+  box.innerHTML = state.qOrder[i].map((oi) =>
+    `<button class="opt${state.answers[i] === oi ? ' picked' : ''}" data-oi="${oi}"><span class="box">${TICK}</span><span>${esc(q.options[oi][0])}</span></button>`).join('');
+  const sheet = $('#quiz-sheet');
+  sheet.style.animation = 'none'; void sheet.offsetWidth; sheet.style.animation = 'screenIn .32s cubic-bezier(.2,.7,.2,1) both';
+}
+
+$('#options').addEventListener('click', (e) => {
+  const b = e.target.closest('.opt');
+  const box = $('#options');
+  if (!b || box.classList.contains('locked')) return;
+  box.classList.add('locked');
+  box.querySelectorAll('.opt').forEach((o) => o.classList.remove('picked'));
+  b.classList.add('picked');
+  haptic.tap();
+  state.answers[state.qi] = +b.dataset.oi;
+  setTimeout(() => {
+    if (state.qi < CONTENT.questions.length - 1) { state.qi++; renderQuestion(); window.scrollTo(0, 0); }
+    else runAnalysis();
+  }, 420);
+});
+
+function prevQuestion() {
+  haptic.tap();
+  if (state.qi === 0) { renderStart(); return; }
+  state.qi--; renderQuestion();
+}
+$('#btn-back').addEventListener('click', prevQuestion);
+
+/* ===== Подсчёт результата ===== */
+function scaleMax() {
+  const max = Object.fromEntries(CONTENT.scaleOrder.map((s) => [s, 0]));
+  CONTENT.questions.forEach((q) => CONTENT.scaleOrder.forEach((s) => {
+    max[s] += Math.max(...q.options.map((o) => o[1][s] || 0));
+  }));
+  return max;
+}
+function computeResult(answers) {
+  const raw = Object.fromEntries(CONTENT.scaleOrder.map((s) => [s, 0]));
+  answers.forEach((oi, qi) => {
+    const w = CONTENT.questions[qi].options[oi][1];
+    for (const s in w) raw[s] += w[s];
+  });
+  const max = scaleMax();
+  const norm = Object.fromEntries(CONTENT.scaleOrder.map((s) => [s, max[s] ? raw[s] / max[s] : 0]));
+  const ranked = CONTENT.scaleOrder.slice().sort((a, b) =>
+    (norm[b] - norm[a]) || (CONTENT.scaleOrder.indexOf(a) - CONTENT.scaleOrder.indexOf(b)));
+  const primary = ranked[0];
+  const secondary = norm[ranked[1]] > 0 ? ranked[1] : null;
+  const form = CONTENT.forms.find((f) => f.scale === primary);
+  const trackId = (secondary && form.pick[secondary]) || form.main;
+  return { form, trackId, track: CONTENT.tracks[trackId], primary, secondary, norm };
+}
+
+/* ===== 3. Анализ: ЭКГ ===== */
+function runAnalysis() {
+  setBack(null);
+  show('s-analysis');
+  state.result = computeResult(state.answers);
+  const steps = CONTENT.ui.analysisSteps;
+  $('#an-steps').innerHTML = steps.map((s) => `<li><span>${esc(s[2])}</span><span></span></li>`).join('');
+  const lis = [...$('#an-steps').children];
+  const status = $('#an-status'), bpmEl = $('#bpm');
+  const cv = $('#ecg'), ctx = cv.getContext('2d');
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr; ctx.scale(dpr, dpr);
+
+  const T = 2.2;                      // длительность анимации, сек
+  const FLAT = 0.45, CHAOS = 1.2;     // ровная линия → норма → срыв
+  // Заранее генерируем сигнал (одна точка на пиксель)
+  const pts = [];
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const g = (x, m, w) => Math.exp(-((x - m) ** 2) / (2 * w * w));
+  for (let x = 0; x <= W; x++) {
+    const t = (x / W) * T;
+    let y = (rnd() - .5) * 0.02;
+    if (t > FLAT && t < CHAOS) {      // нормальные PQRST-комплексы
+      const ph = ((t - FLAT) % 0.36) / 0.36;
+      y += 0.08 * g(ph, .18, .03) - 0.1 * g(ph, .3, .012) + 0.9 * g(ph, .34, .012) - 0.22 * g(ph, .38, .014) + 0.16 * g(ph, .6, .05);
+    } else if (t >= CHAOS) {          // хаос: пики растут
+      const k = Math.min(1, (t - CHAOS) / (T - CHAOS) * 1.6);
+      y += (rnd() - .45) * (0.25 + 1.1 * k) * (rnd() < .35 ? 1.6 : .5);
+    }
+    pts.push([x, H * 0.58 - y * H * 0.4, t >= CHAOS]);
+  }
+
+  const grid = () => {
+    ctx.clearRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(196,48,43,.10)'; ctx.lineWidth = 1;
+    for (let x = 0; x < W; x += 12) { ctx.beginPath(); ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 12) { ctx.beginPath(); ctx.moveTo(0, y + .5); ctx.lineTo(W, y + .5); ctx.stroke(); }
+  };
+  let t0 = null;                      // старт берём из первого кадра, а не из performance.now()
+  let lastBuzz = 0, stepIdx = -1, done = false;
+  const finish = () => { if (done) return; done = true; clearTimeout(safety); setTimeout(renderResult, 200); };
+  // страховка: если анимация по любой причине встанет — всё равно показываем заключение
+  const safety = setTimeout(finish, (T + 1.5) * 1000);
+  function frame(now) {
+    if (done) return;
+    try { draw(now); } catch (e) { console.error(e); finish(); }
+  }
+  function draw(now) {
+    if (t0 === null) t0 = now;
+    // время кадра может прийти чуть раньше старта — не даём ему стать отрицательным
+    const t = Math.max(0, Math.min(T, (now - t0) / 1000));
+    const head = Math.max(0, Math.min(pts.length - 1, Math.floor((t / T) * W)));
+    grid();
+    ctx.lineJoin = 'round'; ctx.lineWidth = 2;
+    // нормальная часть — чернилами, хаос — красным
+    for (const hot of [false, true]) {
+      ctx.strokeStyle = hot ? '#c4302b' : '#1c1b18';
+      ctx.beginPath();
+      for (let x = 1; x <= head && x < pts.length; x++) {
+        if (pts[x][2] !== hot) continue;
+        ctx.moveTo(pts[x - 1][0], pts[x - 1][1]); ctx.lineTo(pts[x][0], pts[x][1]);
+      }
+      ctx.stroke();
+    }
+    const hp = pts[head];
+    ctx.fillStyle = hp[2] ? '#c4302b' : '#1c1b18';
+    ctx.beginPath(); ctx.arc(hp[0], hp[1], 3.2, 0, Math.PI * 2); ctx.fill();
+
+    // ЧСС
+    if (t < FLAT) bpmEl.textContent = 'ЧСС: 60';
+    else if (t < CHAOS) bpmEl.textContent = 'ЧСС: ' + Math.round(64 + (t - FLAT) * 18);
+    else { bpmEl.textContent = 'ЧСС: ' + (Math.random() < .5 ? '???' : Math.round(130 + Math.random() * 90)); bpmEl.classList.add('hot'); }
+    if (t >= CHAOS && now - lastBuzz > 140) { haptic.light(); lastBuzz = now; }
+
+    // подписи этапов
+    const si = steps.reduce((acc, s, i) => (t >= s[0] ? i : acc), 0);
+    if (si !== stepIdx) {
+      stepIdx = si;
+      status.textContent = steps[si][1];
+      status.classList.toggle('hot', si === 3);
+      lis.forEach((li, i) => li.classList.toggle('ok', i < si || (i === si && si === steps.length - 1)));
+    }
+    if (t < T) requestAnimationFrame(frame);
+    else finish();
+  }
+  bpmEl.classList.remove('hot');
+  requestAnimationFrame(frame);
+}
+
+/* ===== Печать (SVG) =====
+   Круглая, синяя, слегка «неровная»: подрагивание контура через feDisplacementMap,
+   неравномерный оттиск через шумовую маску. */
+function stampSVG() {
+  const outer = '• МИНИСТЕРСТВО ЗВУКОВОГО ЗДРАВООХРАНЕНИЯ • ЦЕНТР МУЗЫКАЛЬНОЙ ПСИХОТЕРАПИИ «СДПН» ';
+  const inner = '• ОТДЕЛЕНИЕ АУДИАЛЬНОЙ ТЕРАПИИ • ВЛАДИВОСТОК ';
+  const circ = (r) => `M100 ${100 - r} a${r} ${r} 0 1 1 -0.01 0`;
+  return `<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <defs>
+    <filter id="rough" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="3" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2.4"/>
+    </filter>
+    <filter id="ink"><feTurbulence type="fractalNoise" baseFrequency="0.07 0.11" numOctaves="3" seed="11"/>
+      <feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 -2.2 2.1"/></filter>
+    <mask id="wear"><rect width="200" height="200" filter="url(#ink)"/></mask>
+    <path id="po" d="${circ(80)}"/><path id="pi" d="${circ(57)}"/>
+  </defs>
+  <g fill="none" stroke="#2442a3" filter="url(#rough)" mask="url(#wear)">
+    <circle cx="100" cy="100" r="96" stroke-width="3.4"/>
+    <circle cx="100" cy="100" r="91" stroke-width="1"/>
+    <circle cx="100" cy="100" r="68" stroke-width="1.6"/>
+    <circle cx="100" cy="100" r="47" stroke-width="1.2"/>
+    <g fill="#2442a3" stroke="none" font-family="PT Serif, Times New Roman, serif" font-weight="700">
+      <text font-size="10.6"><textPath href="#po" textLength="${(2 * Math.PI * 80 - 2).toFixed(1)}" lengthAdjust="spacing">${outer}</textPath></text>
+      <text font-size="9.4"><textPath href="#pi" textLength="${(2 * Math.PI * 57 - 2).toFixed(1)}" lengthAdjust="spacing">${inner}</textPath></text>
+      <text x="100" y="94" font-size="12.5" text-anchor="middle" letter-spacing=".6">ДИАГНОЗ</text>
+      <text x="100" y="110" font-size="10.4" text-anchor="middle" letter-spacing=".2">ПОДТВЕРЖДЁН</text>
+      <text x="100" y="124" font-size="7.5" text-anchor="middle" font-family="PT Mono, monospace" font-weight="400">★ СДПН ★</text>
+    </g>
+  </g></svg>`;
+}
+
+/* Подписи — «от руки», синими чернилами */
+const SIGN_GOROKH = 'M2 30 C10 6 16 4 18 18 C20 32 12 34 14 22 C17 8 28 10 30 24 C31 30 36 14 42 16 C48 18 44 30 52 26 C60 22 62 12 70 18 C76 22 80 30 90 14';
+const SIGN_MYAGKOV = 'M2 26 C6 10 12 8 14 26 C16 8 22 6 24 26 C28 14 34 12 36 22 C38 30 46 8 52 20 C56 28 64 22 70 18 C78 12 84 26 92 20 M20 34 C40 30 60 34 88 30';
+
+/* ===== 4. Медзаключение ===== */
+function renderResult() {
+  const r = state.result, f = r.form, i = CONTENT.inst, u = CONTENT.ui;
+  const secForm = r.secondary && CONTENT.forms.find((x) => x.scale === r.secondary);
+  const fmt = (v) => v.toFixed(2).replace('.', ',');
+  const scoresHTML = CONTENT.scaleOrder.slice().sort((a, b) => r.norm[b] - r.norm[a]).map((s) =>
+    `<div class="${s === r.primary ? 'hi' : ''}"><span>${esc(CONTENT.scales[s].label)}</span><span class="dots"></span><span>${fmt(r.norm[s])} у.е.</span></div>`).join('');
+
+  $('#doc').innerHTML = `
+    <div class="inst">${instHTML()}</div>
+    <hr class="double-rule">
+    <h1>МЕДИЦИНСКОЕ ЗАКЛЮЧЕНИЕ</h1>
+    <div class="meta"><span>Дата: <span class="glitch" data-glitch></span></span><span>№ ${esc(state.number)}, ${esc(i.city)}</span></div>
+    <div class="about">О диагнозе СДПН (Синдром Дефицита Психической Нестабильности)</div>
+
+    <div class="field"><span class="k">Ф.И.О. пациента:</span><span class="v" id="pname"></span></div>
+    <div class="field"><span class="k">Возраст:</span><span class="v">не имеет значения</span></div>
+    <div class="field"><span class="k">Место жительства:</span><span class="v">Неизвестно</span></div>
+
+    <p><span class="lbl">Жалобы:</span> ${esc(f.complaints)}</p>
+    <p><span class="lbl">Анамнез:</span> ${esc(f.anamnesis)}</p>
+    <p><span class="lbl">Объективно:</span> ${esc(f.objective)}</p>
+
+    <p class="lbl" style="margin-bottom:2px">Данные обследования:</p>
+    <div class="scores">${scoresHTML}</div>
+
+    <div class="diag">
+      <div><span class="lbl">Диагноз:</span></div>
+      <div class="name">${esc(f.name)}</div>
+      <div class="code">Код: ${esc(f.code)}</div>
+      ${secForm ? `<div class="co">Сопутствующие проявления: ${esc(secForm.short.toLowerCase())} (${esc(secForm.code)}).</div>` : ''}
+    </div>
+
+    <p class="lbl" style="margin-bottom:0">Клиническая картина:</p>
+    <ul>${f.picture.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>
+
+    <div class="rx">
+      <p class="lbl" style="margin:0 0 6px">Назначение:</p>
+      <ol>
+        <li>Курс прослушивания трека<br><span class="track">«${esc(r.track.title)}»</span><br>с альбома «СДПН» (Сборник Для Психически Нестабильных).</li>
+        <li>Способ применения: аурикулярно, через наушники.</li>
+        <li>Режим: ${esc(f.regimen)}</li>
+        <li>Длительность курса: ${esc(f.duration)}</li>
+      </ol>
+      <div class="why">Обоснование: ${esc(r.track.why)}</div>
+    </div>
+
+    <p><span class="lbl">Противопоказания:</span> ${esc(f.contra)}</p>
+    <p><span class="lbl">Прогноз:</span> ${esc(f.prognosis)}</p>
+
+    <div class="signs" id="signs">
+      <div class="sign-row"><span>Лечащий врач</span><span class="line"><svg viewBox="0 0 92 40"><path d="${SIGN_GOROKH}"/></svg></span><span>${esc(i.doctor)}</span></div>
+      <div class="sign-row"><span>Заведующий отделением</span><span class="line"><svg viewBox="0 0 92 40"><path d="${SIGN_MYAGKOV}"/></svg></span><span>${esc(i.head)}</span></div>
+      <div class="mp">М.П.</div>
+      <div class="stamp" id="stamp">${stampSVG()}</div>
+    </div>
+    <div class="fineprint">${esc(u.docFooter)}</div>`;
+
+  document.querySelectorAll('#doc [data-glitch]').forEach(mountGlitch);
+  $('#pname').textContent = patientName();
+
+  show('s-result');
+  haptic.ok();
+  setMain(u.acceptBtn.toUpperCase(), acceptRx, '#2442a3');
+  setBack(null);
+
+  // Печать «ставится», когда блок подписей появляется на экране
+  const stamp = $('#stamp');
+  const fire = () => {
+    if (stamp.classList.contains('on')) return;
+    stamp.classList.add('on');
+    setTimeout(() => { haptic.thud(); const d = $('#doc'); d.classList.remove('shake'); void d.offsetWidth; d.classList.add('shake'); }, 210);
+  };
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); setTimeout(fire, 250); } }, { threshold: 0.7 });
+    io.observe($('#signs'));
+  } else setTimeout(fire, 1200);
+}
+
+/* ---------- Действия на результате ---------- */
+function acceptRx() {
+  haptic.tap();
+  const url = state.result.track.url || CONTENT.links.channel;
+  if (!openUrl(url)) alertMsg(CONTENT.ui.noLink);
+}
+$('#btn-rx').addEventListener('click', acceptRx);
+$('#btn-again').addEventListener('click', () => { haptic.tap(); state.result = null; renderStart(); });
+$('#btn-channel').addEventListener('click', () => { haptic.tap(); if (!openUrl(CONTENT.links.channel)) alertMsg(CONTENT.ui.noChannel); });
+$('#btn-save').addEventListener('click', () => openSaveOverlay(CONTENT.ui.saveHint));
+$('#btn-story').addEventListener('click', shareStory);
+$('#btn-start').addEventListener('click', startQuiz);
+$('#ov-close').addEventListener('click', closeOverlay);
+
+/* =====================================================================
+   КАРТОЧКА 1080×1920 (canvas)
+   ===================================================================== */
+async function fontsReady() {
+  try {
+    await Promise.all(['400 40px "PT Serif"', '700 40px "PT Serif"', 'italic 400 40px "PT Serif"', '400 40px "PT Mono"']
+      .map((f) => document.fonts.load(f, 'АБВабв')));
+  } catch (e) {}
+}
+function wrap(ctx, text, maxW) {
+  const words = String(text).split(/\s+/); const lines = []; let line = '';
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = w; } else line = test;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+/* Печать на canvas: рисуется на отдельном слое, потом «вытирается» шумом и кладётся multiply */
+function drawStamp(ctx, cx, cy, R, rot) {
+  const S = Math.ceil(R * 2 + 20);
+  const c = document.createElement('canvas'); c.width = c.height = S;
+  const s = c.getContext('2d');
+  const blue = '#2442a3';
+  s.translate(S / 2, S / 2);
+  s.strokeStyle = blue; s.fillStyle = blue;
+  const ring = (r, w) => { s.lineWidth = w; s.beginPath();
+    for (let a = 0; a <= Math.PI * 2 + .01; a += .02) { const j = r + Math.sin(a * 7) * R * .004 + (Math.random() - .5) * R * .006;
+      a === 0 ? s.moveTo(Math.cos(a) * j, Math.sin(a) * j) : s.lineTo(Math.cos(a) * j, Math.sin(a) * j); }
+    s.closePath(); s.stroke(); };
+  ring(R * .96, R * .034); ring(R * .91, R * .01); ring(R * .68, R * .016); ring(R * .47, R * .012);
+  const arcText = (text, r, size) => {
+    s.save(); s.font = `700 ${size}px "PT Serif"`; s.textAlign = 'center'; s.textBaseline = 'middle';
+    const chars = [...text]; const step = (Math.PI * 2) / chars.length;
+    chars.forEach((ch, k) => { s.save(); s.rotate(-Math.PI / 2 + k * step + step / 2); s.translate(r, 0); s.rotate(Math.PI / 2); s.fillText(ch, 0, 0); s.restore(); });
+    s.restore();
+  };
+  arcText('• МИНИСТЕРСТВО ЗВУКОВОГО ЗДРАВООХРАНЕНИЯ • ЦЕНТР МУЗЫКАЛЬНОЙ ПСИХОТЕРАПИИ «СДПН» ', R * .795, R * .1);
+  arcText('• ОТДЕЛЕНИЕ АУДИАЛЬНОЙ ТЕРАПИИ • ВЛАДИВОСТОК ', R * .575, R * .088);
+  s.textAlign = 'center'; s.textBaseline = 'middle';
+  s.font = `700 ${R * .125}px "PT Serif"`; s.fillText('ДИАГНОЗ', 0, -R * .07);
+  s.font = `700 ${R * .104}px "PT Serif"`; s.fillText('ПОДТВЕРЖДЁН', 0, R * .1);
+  s.font = `400 ${R * .075}px "PT Mono"`; s.fillText('★ СДПН ★', 0, R * .25);
+  // износ оттиска
+  s.setTransform(1, 0, 0, 1, 0, 0);
+  s.globalCompositeOperation = 'destination-out';
+  for (let k = 0; k < 900; k++) { s.globalAlpha = Math.random() * .7; s.beginPath(); s.arc(Math.random() * S, Math.random() * S, Math.random() * R * .018, 0, Math.PI * 2); s.fill(); }
+  s.globalAlpha = .35; s.beginPath(); s.ellipse(S * .7, S * .3, S * .22, S * .1, .6, 0, Math.PI * 2); s.fill();
+  ctx.save(); ctx.globalAlpha = .9; ctx.globalCompositeOperation = 'multiply';
+  ctx.translate(cx, cy); ctx.rotate(rot); ctx.drawImage(c, -S / 2, -S / 2); ctx.restore();
+}
+
+async function drawCard(result, number, name) {
+  await fontsReady();
+  const W = 1080, H = 1920, M = 92;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  const f = result.form, inst = CONTENT.inst;
+
+  // бумага
+  x.fillStyle = '#f5f0e3'; x.fillRect(0, 0, W, H);
+  for (let k = 0; k < 9000; k++) { x.fillStyle = `rgba(90,70,40,${Math.random() * .05})`; x.fillRect(Math.random() * W, Math.random() * H, 2, 2); }
+  const grad = x.createRadialGradient(W / 2, H / 2, H * .3, W / 2, H / 2, H * .75);
+  grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(110,90,50,.12)');
+  x.fillStyle = grad; x.fillRect(0, 0, W, H);
+
+  const ink = '#1c1b18', soft = '#5d584c';
+  const center = (t, y) => { x.textAlign = 'center'; x.fillText(t, W / 2, y); x.textAlign = 'left'; };
+  // Telegram перекрывает ~150px сверху и снизу сторис — важное держим в середине
+  let y = 140;
+  x.fillStyle = ink; x.textBaseline = 'alphabetic';
+  x.font = '700 28px "PT Serif"'; center(inst.ministry, y); y += 40;
+  x.font = '400 28px "PT Serif"'; center(inst.center, y); y += 36;
+  x.font = 'italic 400 26px "PT Serif"'; x.fillStyle = soft; center(inst.dept, y); y += 28;
+  x.fillStyle = ink; x.fillRect(M, y, W - 2 * M, 4); x.fillRect(M, y + 9, W - 2 * M, 1.5); y += 84;
+
+  x.font = '700 54px "PT Serif"'; center('МЕДИЦИНСКОЕ ЗАКЛЮЧЕНИЕ', y); y += 64;
+  x.font = '400 30px "PT Mono"';
+  x.fillText('Дата: ', M, y);
+  const dx = M + x.measureText('Дата: ').width;
+  x.fillStyle = '#c4302b'; x.fillText(inst.glitchDate, dx, y); x.fillStyle = ink;
+  x.textAlign = 'right'; x.fillText(`№ ${number}`, W - M, y); x.textAlign = 'left'; y += 42;
+  x.fillText(inst.city, M, y); y += 62;
+
+  // ЭКГ-полоса: ровно → норма → срыв
+  x.strokeStyle = '#c4302b'; x.lineWidth = 3; x.lineJoin = 'round'; x.beginPath();
+  const ey = y; x.moveTo(M, ey);
+  for (let px = M; px <= W - M; px += 6) {
+    const k = (px - M) / (W - 2 * M);
+    let dy = 0;
+    if (k > .3 && k < .62) { const ph = ((k - .3) * 9) % 1; dy = ph > .45 && ph < .5 ? -44 : ph > .5 && ph < .55 ? 26 : 0; }
+    if (k >= .62) dy = (Math.random() - .5) * 100 * (k - .55) * 2.4;
+    x.lineTo(px, ey + dy);
+  }
+  x.stroke(); y += 92;
+
+  x.font = '400 32px "PT Serif"'; x.fillStyle = ink;
+  x.fillText('Ф.И.О. пациента: ', M, y);
+  const nx = M + x.measureText('Ф.И.О. пациента: ').width;
+  // длинное имя уменьшаем, чтобы влезло в строку
+  let ns = 32; do { x.font = `400 ${ns}px "PT Mono"`; ns -= 2; } while (x.measureText(name).width > W - M - nx && ns > 18);
+  x.fillStyle = name === 'Неизвестно' ? ink : '#2442a3'; x.fillText(name, nx, y); x.fillStyle = ink;
+  x.setLineDash([3, 6]); x.strokeStyle = '#8f887a'; x.lineWidth = 2; x.beginPath(); x.moveTo(nx, y + 10); x.lineTo(W - M, y + 10); x.stroke(); x.setLineDash([]);
+  y += 82;
+
+  // Диагноз (короткое название формы)
+  x.font = '700 30px "PT Serif"'; x.fillText('ДИАГНОЗ:', M, y); y += 70;
+  const dTop = y - 52;
+  x.font = '700 62px "PT Serif"';
+  wrap(x, f.short, W - 2 * M - 30).forEach((l) => { x.fillText(l, M + 30, y); y += 70; });
+  x.font = '400 30px "PT Mono"'; x.fillText(`Код: ${f.code}`, M + 30, y - 16); y += 10;
+  x.fillRect(M, dTop, 7, y - dTop - 10); y += 58;
+
+  // Клиническая картина (3 пункта)
+  x.font = '700 30px "PT Serif"'; x.fillText('Клиническая картина:', M, y); y += 46;
+  x.font = '400 30px "PT Serif"';
+  f.picture.slice(0, 3).forEach((p) => { wrap(x, '— ' + p, W - 2 * M).forEach((l) => { x.fillText(l, M, y); y += 42; }); });
+  y += 30;
+
+  // Назначение — в рамке
+  const boxTop = y;
+  y += 64;
+  x.font = 'italic 700 34px "PT Serif"'; x.fillText('Rp.  Назначение:', M + 34, y); y += 82;
+  x.fillStyle = '#2442a3';
+  let ts = 72, tl;
+  do { x.font = `700 ${ts}px "PT Serif"`; tl = wrap(x, `«${result.track.title}»`, W - 2 * M - 68); ts -= 6; } while (tl.length > 2 && ts > 44);
+  tl.forEach((l) => { x.fillText(l, M + 34, y); y += ts + 14; });
+  x.fillStyle = ink; x.font = '400 30px "PT Serif"'; y += 2;
+  x.fillText('с альбома «СДПН» —', M + 34, y); y += 42;
+  x.fillText('Сборник Для Психически Нестабильных', M + 34, y); y += 30;
+  x.strokeStyle = ink; x.lineWidth = 3; x.strokeRect(M, boxTop, W - 2 * M, y - boxTop);
+  y += 92;
+
+  // Подписи + печать поверх «М.П.»
+  x.fillStyle = ink; x.font = '400 30px "PT Serif"';
+  const sign = (label, who, d, yy) => {
+    x.fillText(label, M, yy);
+    const lx = M + x.measureText(label).width + 20, rx = W - M - x.measureText(who).width - 20;
+    x.fillRect(lx, yy + 6, rx - lx, 2);
+    x.textAlign = 'right'; x.fillText(who, W - M, yy); x.textAlign = 'left';
+    x.save(); x.translate(lx + 20, yy - 46); x.scale(2, 1.5); x.strokeStyle = '#2442a3'; x.lineWidth = 1.6; x.lineCap = 'round'; x.stroke(new Path2D(d)); x.restore();
+  };
+  sign('Лечащий врач', inst.doctor, SIGN_GOROKH, y); y += 78;
+  sign('Заведующий отделением', inst.head, SIGN_MYAGKOV, y); y += 70;
+  x.font = '700 32px "PT Serif"'; x.fillText('М.П.', M, y);
+  drawStamp(x, M + 260, y - 70, 160, -0.24);
+
+  // Подвал
+  x.font = 'italic 400 22px "PT Serif"'; x.fillStyle = '#8f887a';
+  wrap(x, CONTENT.ui.docFooter, W - 2 * M).forEach((l, k) => center(l, H - 108 + k * 30));
+  x.font = '400 24px "PT Mono"'; x.fillStyle = soft; center(`${CONTENT.artist} · альбом «СДПН»`, H - 44);
+  return c;
+}
+
+/* ---------- Сохранение / сторис ---------- */
+let lastBlobUrl = '';
+async function openSaveOverlay(hint) {
+  toast(CONTENT.ui.preparing);
+  const canvas = await drawCard(state.result, state.number, patientName());
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+  $('#ov-img').src = dataUrl;
+  $('#ov-hint').textContent = hint;
+  $('#overlay').classList.add('on');
+  $('#toast').classList.remove('on');
+  setMain(null);
+  setBack(closeOverlay);
+  $('#ov-download').onclick = async () => {
+    haptic.tap();
+    const fileName = `${state.number}.jpg`;
+    // 1) Telegram 8.0+: нативное скачивание — но только по публичному URL (готовая карточка трека)
+    const pub = storyUrl(state.result.trackId);
+    if (IN_TG && tgv('8.0') && pub && await exists(pub)) { try { tg.downloadFile({ url: pub, file_name: `СДПН-${state.result.trackId}.jpg` }); return; } catch (e) {} }
+    let blob;
+    try { blob = await (await fetch(dataUrl)).blob(); } catch (e) { toast(CONTENT.ui.saveHint); return; }
+    // 2) Только на телефонах: системное меню «Поделиться» → «Сохранить изображение».
+    //    На компьютере (Windows/macOS) это меню часто падает с ошибкой, поэтому там сразу скачиваем.
+    const isPhone = matchMedia('(pointer: coarse)').matches && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isPhone) {
+      try {
+        const file = new File([blob], fileName, { type: 'image/jpeg' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file] }); return; }
+      } catch (e) {
+        if (e && e.name === 'AbortError') return; // пользователь сам закрыл меню
+        // иначе — падаем в обычное скачивание
+      }
+    }
+    // 3) Обычное скачивание файла
+    try {
+      if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
+      lastBlobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = lastBlobUrl; a.download = fileName; document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) { toast(CONTENT.ui.saveHint); }
+  };
+}
+function closeOverlay() {
+  $('#overlay').classList.remove('on');
+  setBack(null);
+  setMain(CONTENT.ui.acceptBtn.toUpperCase(), acceptRx, '#2442a3');
+}
+
+/* Готовые картинки для сторис лежат в /stories/<id трека>.jpg (см. README). */
+function storyUrl(trackId) {
+  try {
+    const u = new URL(CONTENT.links.stories + trackId + '.jpg', location.href);
+    return u.protocol === 'https:' ? u.href : '';
+  } catch (e) { return ''; }
+}
+async function exists(url) {
+  try { const r = await fetch(url, { method: 'HEAD', cache: 'no-store' }); return r.ok; } catch (e) { return false; }
+}
+async function shareStory() {
+  haptic.tap();
+  const url = storyUrl(state.result.trackId);
+  if (IN_TG && tgv('7.8') && url && await exists(url)) {
+    const params = { text: CONTENT.ui.storyText };
+    if (CONTENT.links.miniApp) params.widget_link = { url: CONTENT.links.miniApp, name: 'Пройти обследование' };
+    try { tg.shareToStory(url, params); return; } catch (e) {}
+  }
+  // запасной вариант: показать персональную карточку для ручной публикации
+  openSaveOverlay(CONTENT.ui.storyFallbackHint);
+}
+
+/* =====================================================================
+   СЛУЖЕБНЫЕ РЕЖИМЫ (для автора)
+   ?export=stories — сгенерировать картинки для сторис по всем трекам
+                     и отправить на локальный tools/save_server.py
+   ?sim            — прогнать 20 000 случайных анкет и показать распределение
+   ===================================================================== */
+async function exportStories() {
+  const ids = Object.keys(CONTENT.tracks);
+  const out = [];
+  for (const id of ids) {
+    const form = CONTENT.forms.find((f) => f.main === id || Object.values(f.pick).includes(id));
+    const canvas = await drawCard({ form, trackId: id, track: CONTENT.tracks[id] }, 'СДПН-' + String(101 + ids.indexOf(id)), 'Неизвестно');
+    const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.9));
+    const res = await fetch('/__save?name=' + encodeURIComponent(id + '.jpg'), { method: 'PUT', body: blob }).catch(() => null);
+    out.push(id + (res && res.ok ? ' ✓' : ' ✗'));
+  }
+  document.body.innerHTML = '<pre style="padding:20px;font:14px monospace">' + out.join('\n') + '</pre>';
+  return out;
+}
+function simulate(n = 20000) {
+  const byForm = {}, byTrack = {};
+  for (let k = 0; k < n; k++) {
+    const ans = CONTENT.questions.map((q) => Math.floor(Math.random() * q.options.length));
+    const r = computeResult(ans);
+    byForm[r.form.code] = (byForm[r.form.code] || 0) + 1;
+    byTrack[r.trackId] = (byTrack[r.trackId] || 0) + 1;
+  }
+  return { byForm, byTrack, missing: Object.keys(CONTENT.tracks).filter((t) => !byTrack[t]) };
+}
+
+/* ---------- Старт ---------- */
+document.querySelectorAll('[data-t]').forEach((el) => { const v = get(el.dataset.t); if (typeof v === 'string') el.textContent = v; });
+document.querySelectorAll('[data-inst]').forEach((el) => { el.innerHTML = instHTML(); });
+document.querySelectorAll('[data-glitch]').forEach(mountGlitch);
+const params = new URLSearchParams(location.search);
+if (params.has('export')) exportStories();
+else if (params.has('sim')) { document.body.innerHTML = '<pre style="padding:20px;font:14px monospace">' + JSON.stringify(simulate(), null, 2) + '</pre>'; }
+else renderStart();
+</script>
+</body>
+</html>
