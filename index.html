@@ -286,8 +286,30 @@ button { font: inherit; color: inherit; cursor: pointer; }
   font-family: var(--mono); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; display: flex; align-items: center; justify-content: center; gap: 6px; }
 .tab.active { background: var(--paper); color: var(--ink); }
 .tab .tab-lock { font-size: 8px; color: var(--red); }
+.tab .tab-count { font-size: 10px; color: var(--blue); }
+.tab .tab-count:empty { display: none; }
+.tabs .tab { letter-spacing: .04em; padding-left: 4px; padding-right: 4px; font-size: 11px; }
+/* Результаты исследований */
+.hist h2 { font-family: var(--serif); font-size: 18px; margin: 0; letter-spacing: .04em; }
+.hist .h-sub { font-style: italic; font-size: 13px; color: var(--ink-soft); margin: 4px 0 12px; }
+.h-row { border-top: 1px dashed var(--rule); }
+.h-row:last-of-type { border-bottom: 1px dashed var(--rule); }
+.h-head { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; width: 100%; padding: 11px 0; background: none; border: 0; text-align: left; color: var(--ink); font-family: var(--serif); }
+.h-head .n { font-weight: 700; font-size: 15px; }
+.h-head .dt { font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft); align-self: center; }
+.h-head .dx { grid-column: 1 / 3; font-size: 13.5px; color: var(--ink-soft); }
+.h-head .dx b { font-family: var(--mono); font-weight: 400; color: var(--blue); }
+.h-body { display: none; padding: 0 0 14px; font-size: 14.5px; line-height: 1.5; }
+.h-row.expanded .h-body { display: block; }
+.h-row.expanded .h-head .n::after { content: ' ▾'; color: var(--ink-faint); font-weight: 400; }
+.h-row:not(.expanded) .h-head .n::after { content: ' ▸'; color: var(--ink-faint); font-weight: 400; }
+.h-body .k { font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft); letter-spacing: .04em; }
+.h-body .trk { font-weight: 700; color: var(--blue); }
+.h-body .btn { margin-top: 10px; min-height: 44px; font-size: 14.5px; }
+.hist .btn-primary { background: var(--ink); color: var(--paper); }
+.hist .h-again { margin-top: 16px; }
 .tab .tab-lock.off { display: none; }
-.has-tabs #s-start > .sheet:first-child, .has-tabs #s-proc > .sheet { border-top-left-radius: 0; border-top-right-radius: 0; }
+.has-tabs #s-start > .sheet:first-child, .has-tabs #s-proc > .sheet, .has-tabs #s-hist > .sheet { border-top-left-radius: 0; border-top-right-radius: 0; }
 /* Закрытый процедурный лист */
 .proc-gate { text-align: center; padding: 6px 4px 16px; }
 .proc-gate .g-stamp { display: inline-block; border: 2px solid var(--red); color: var(--red); font-family: var(--mono); font-size: 12px; letter-spacing: .2em; padding: 4px 10px; transform: rotate(-4deg); margin: 6px 0 12px; }
@@ -375,10 +397,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
 <body>
 <div class="app" id="app">
 
-  <!-- Вкладки медкарты: только в предрелизный период (на регистратуре и в процедурном листе) -->
+  <!-- Вкладки медкарты. «Процедуры» — только в предрелизный период. -->
   <nav class="tabs" id="tabs" hidden>
-    <button class="tab" data-tab="s-start" data-t="prerelease.tabStart"></button>
-    <button class="tab" data-tab="s-proc"><span data-t="prerelease.tabProc"></span><span class="tab-lock" id="tab-lock">●</span></button>
+    <button class="tab" data-tab="s-start" data-t="history.tabStart"></button>
+    <button class="tab" data-tab="s-hist"><span data-t="history.tab"></span><span class="tab-count" id="tab-count"></span></button>
+    <button class="tab" data-tab="s-proc" id="tab-proc"><span data-t="prerelease.tabProc"></span><span class="tab-lock" id="tab-lock">●</span></button>
   </nav>
 
   <!-- ================= 1. РЕГИСТРАТУРА ================= -->
@@ -405,6 +428,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
       <div class="doctor-line"><span data-t="ui.cabinet"></span><span>Дата: <span class="glitch" data-glitch></span></span></div>
       <div class="actions"><button class="btn btn-primary mb-dup" id="btn-start" data-t="ui.startBtn"></button></div>
     </div>
+    <p class="disclaimer" data-t="ui.disclaimer"></p>
+  </section>
+
+  <!-- ================= РЕЗУЛЬТАТЫ ИССЛЕДОВАНИЙ (вкладка) ================= -->
+  <section class="screen" id="s-hist">
+    <div class="sheet hist" id="hist"></div>
     <p class="disclaimer" data-t="ui.disclaimer"></p>
   </section>
 
@@ -531,8 +560,7 @@ const CONTENT = {
     regOnlyTg: 'Встать на учёт можно, открыв обследование в Telegram.',
     procTitle: 'Процедурный лист',
     procSub: 'Курс подготовки к приёму препарата. Процедуры открываются ежедневно, по одной.',
-    tabStart: 'Регистратура',
-    tabProc: 'Процедурный лист',
+    tabProc: 'Процедуры',
     gateStamp: 'НЕ ВЫДАН',
     gateText: 'Чтобы получить процедурный лист, необходимо пройти обследование и встать на учёт.',
     gateBtn: 'Пройти обследование',
@@ -542,6 +570,26 @@ const CONTENT = {
     procLocked: (d) => d === 1 ? 'откроется завтра' : `откроется через ${d} ${plural(d, 'день', 'дня', 'дней')}`,
     procDone: 'выполнено',
     stampReleased: ['ПРЕПАРАТ', 'ВЫДАН'],
+  },
+
+  /* ---------- Результаты исследований (история обследований пациента) ----------
+     Хранятся в облаке Telegram у самого пользователя (CloudStorage) — видны с любого его устройства.
+     В обычном браузере — только на этом устройстве. */
+  history: {
+    tabStart: 'Регистратура',
+    tab: 'Результаты',
+    title: 'Результаты исследований',
+    sub: 'Все пройденные обследования. Нажмите, чтобы развернуть.',
+    item: (n) => `Исследование № ${n}`,
+    rx: 'Назначение',
+    card: 'Карта',
+    open: 'Открыть заключение',
+    emptyStamp: 'КАРТА ПУСТА',
+    emptyTitle: 'Исследований пока нет.',
+    emptyText: 'Пройдите обследование, чтобы узнать свой диагноз и получить назначение. Обследование бесплатное и занимает около двух минут.',
+    emptyBtn: 'Пройти обследование',
+    again: 'Пройти повторное обследование',
+    max: 30,                // сколько последних исследований хранить
   },
 
   /* ---------- Процедурный лист (7 дней до релиза) ----------
@@ -1047,9 +1095,10 @@ function mountGlitch(el) {
 /* ---------- Экраны ---------- */
 function show(id) {
   document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('active', s.id === id));
-  // вкладки «Регистратура / Процедурный лист» — только в предрелизный период и только на этих двух экранах
-  const tabsOn = releaseInfo().phase === 'prerelease' && (id === 's-start' || id === 's-proc');
+  // вкладки медкарты — на регистратуре, в результатах и в процедурном листе; «Процедуры» — только до релиза
+  const tabsOn = ['s-start', 's-hist', 's-proc'].includes(id);
   $('#tabs').hidden = !tabsOn;
+  $('#tab-proc').hidden = releaseInfo().phase !== 'prerelease';
   document.body.classList.toggle('has-tabs', tabsOn);
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === id));
   $('#tab-lock').classList.toggle('off', isRegistered());
@@ -1059,6 +1108,9 @@ function show(id) {
 function openTab(id) {
   haptic.tap();
   if (id === 's-start') { renderStart(); return; }
+  if (id === 's-hist') { renderHistory(); show('s-hist'); setBack(null);
+    if (!historyCache.length) setMain(CONTENT.history.emptyBtn.toUpperCase(), startQuiz); else setMain(null);
+    return; }
   renderProcedures();
   show('s-proc');
   setBack(null);
@@ -1066,6 +1118,92 @@ function openTab(id) {
   if (!isRegistered()) setMain(CONTENT.prerelease.gateBtn.toUpperCase(), startQuiz); else setMain(null);
 }
 $('#tabs').addEventListener('click', (e) => { const t = e.target.closest('.tab'); if (t) openTab(t.dataset.tab); });
+
+/* =====================================================================
+   РЕЗУЛЬТАТЫ ИССЛЕДОВАНИЙ — история обследований
+   Запись: { c: номер карты, d: дата (мс), f: код формы, t: id трека, s: [7 шкал × 100] }.
+   Хранится в Telegram CloudStorage (облако пользователя, до 4096 символов на ключ),
+   в обычном браузере — в localStorage. Кратко, чтобы влезло ~30 исследований.
+   ===================================================================== */
+const HIST_KEY = 'sdpn_history';
+let historyCache = [];
+const useCloud = () => IN_TG && tgv('6.9') && tg.CloudStorage;
+function storeGet(key) {
+  return new Promise((resolve) => {
+    if (useCloud()) { try { tg.CloudStorage.getItem(key, (err, v) => resolve(err ? null : v)); } catch (e) { resolve(null); } return; }
+    try { resolve(localStorage.getItem(key)); } catch (e) { resolve(null); }
+  });
+}
+function storeSet(key, value) {
+  return new Promise((resolve) => {
+    if (useCloud()) { try { tg.CloudStorage.setItem(key, value, () => resolve()); } catch (e) { resolve(); } return; }
+    try { localStorage.setItem(key, value); } catch (e) {}
+    resolve();
+  });
+}
+async function loadHistory() {
+  try { const v = await storeGet(HIST_KEY); historyCache = v ? JSON.parse(v) : []; } catch (e) { historyCache = []; }
+  if (!Array.isArray(historyCache)) historyCache = [];
+  updateHistCount();
+  return historyCache;
+}
+function updateHistCount() { $('#tab-count').textContent = historyCache.length ? String(historyCache.length) : ''; }
+async function saveToHistory(result, card) {
+  const rec = { c: card, d: Date.now(), f: result.form.code, t: result.trackId, s: CONTENT.scaleOrder.map((k) => Math.round(result.norm[k] * 100)) };
+  historyCache = [...historyCache, rec].slice(-CONTENT.history.max);
+  updateHistCount();
+  await storeSet(HIST_KEY, JSON.stringify(historyCache));
+}
+/* Восстановить полный результат из краткой записи (для «Открыть заключение») */
+function resultFromRecord(rec) {
+  const norm = Object.fromEntries(CONTENT.scaleOrder.map((k, i) => [k, (rec.s && rec.s[i] || 0) / 100]));
+  const form = CONTENT.forms.find((f) => f.code === rec.f) || CONTENT.forms[0];
+  const ranked = CONTENT.scaleOrder.slice().sort((a, b) => (norm[b] - norm[a]) || (CONTENT.scaleOrder.indexOf(a) - CONTENT.scaleOrder.indexOf(b)));
+  const trackId = CONTENT.tracks[rec.t] ? rec.t : form.main;
+  return { form, trackId, track: CONTENT.tracks[trackId], primary: form.scale, secondary: ranked.find((k) => k !== form.scale && norm[k] > 0) || null, norm };
+}
+function fmtDate(ms) {
+  const d = new Date(ms), p = (n) => String(n).padStart(2, '0');
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function renderHistory() {
+  const box = $('#hist'), H = CONTENT.history;
+  if (!historyCache.length) {
+    box.innerHTML = `<h2>${esc(H.title)}</h2>
+      <div class="proc-gate"><div class="g-stamp">${esc(H.emptyStamp)}</div>
+        <p class="g-text"><b>${esc(H.emptyTitle)}</b><br>${esc(H.emptyText)}</p>
+        <button class="btn btn-primary mb-dup" id="btn-hist-start">${esc(H.emptyBtn)}</button></div>`;
+    $('#btn-hist-start').addEventListener('click', startQuiz);
+    return;
+  }
+  // новые сверху; номер исследования — по порядку прохождения
+  const rows = historyCache.map((rec, i) => ({ rec, n: i + 1 })).reverse();
+  box.innerHTML = `<h2>${esc(H.title)}</h2><div class="h-sub">${esc(H.sub)}</div>` + rows.map(({ rec, n }, j) => {
+    const form = CONTENT.forms.find((f) => f.code === rec.f);
+    const track = CONTENT.tracks[rec.t];
+    return `<div class="h-row${j === 0 ? ' expanded' : ''}" data-n="${n - 1}">
+      <button class="h-head"><span class="n">${esc(H.item(n))}</span><span class="dt">${esc(fmtDate(rec.d))}</span>
+        <span class="dx"><b>${esc(rec.f)}</b> · ${esc(form ? form.short : '—')}</span></button>
+      <div class="h-body">
+        <div><span class="k">${esc(H.rx)}:</span> <span class="trk">«${esc(track ? track.title : rec.t)}»</span></div>
+        <div><span class="k">${esc(H.card)}:</span> ${esc(rec.c)}</div>
+        <button class="btn btn-primary h-open">${esc(H.open)}</button>
+      </div></div>`;
+  }).join('') + `<button class="btn btn-ghost h-again" id="btn-hist-again" style="color:var(--ink);border-color:var(--rule)">${esc(H.again)}</button>`;
+  $('#btn-hist-again').addEventListener('click', startQuiz);
+}
+$('#hist').addEventListener('click', (e) => {
+  const row = e.target.closest('.h-row');
+  if (!row) return;
+  if (e.target.closest('.h-open')) {
+    const rec = historyCache[+row.dataset.n];
+    state.result = resultFromRecord(rec);
+    state.number = rec.c;
+    renderResult({ fromHistory: true });
+    return;
+  }
+  if (e.target.closest('.h-head')) { row.classList.toggle('expanded'); haptic.tap(); }
+});
 
 function instHTML() {
   const i = CONTENT.inst;
@@ -1477,8 +1615,9 @@ const SIGN_GOROKH = 'M2 30 C10 6 16 4 18 18 C20 32 12 34 14 22 C17 8 28 10 30 24
 const SIGN_MYAGKOV = 'M2 26 C6 10 12 8 14 26 C16 8 22 6 24 26 C28 14 34 12 36 22 C38 30 46 8 52 20 C56 28 64 22 70 18 C78 12 84 26 92 20 M20 34 C40 30 60 34 88 30';
 
 /* ===== 4. Медзаключение ===== */
-function renderResult() {
+function renderResult(opts = {}) {
   const r = state.result, f = r.form, i = CONTENT.inst, u = CONTENT.ui, rel = releaseInfo();
+  if (!opts.fromHistory) saveToHistory(r, state.number); // новое исследование — в «Результаты»
   const secForm = r.secondary && CONTENT.forms.find((x) => x.scale === r.secondary);
   const fmt = (v) => v.toFixed(2).replace('.', ',');
   const scoresHTML = CONTENT.scaleOrder.slice().sort((a, b) => r.norm[b] - r.norm[a]).map((s) =>
@@ -1544,7 +1683,7 @@ function renderResult() {
   $('#btn-rx').textContent = rxLabel();
   renderRegCard();
   setMain(rxLabel().toUpperCase(), acceptRx, '#2442a3');
-  setBack(null);
+  setBack(opts.fromHistory ? () => openTab('s-hist') : null); // из «Результатов» — «назад» к списку
 
   // Печать «ставится», когда блок подписей появляется на экране
   const stamp = $('#stamp');
@@ -1918,7 +2057,7 @@ document.querySelectorAll('[data-glitch]').forEach(mountGlitch);
 const params = new URLSearchParams(location.search);
 if (params.has('export')) exportStories();
 else if (params.has('sim')) { document.body.innerHTML = '<pre style="padding:20px;font:14px monospace">' + JSON.stringify(simulate(), null, 2) + '</pre>'; }
-else renderStart();
+else { renderStart(); loadHistory(); }
 </script>
 </body>
 </html>
