@@ -5,6 +5,15 @@ compatibility_date = "2026-11-01"
 [vars]
 MINIAPP_URL = "https://3tochie3.github.io/sdpn/"
 ALLOWED_ORIGINS = "https://3tochie3.github.io"
+# Дата релиза — та же, что CONTENT.release.date в index.html. По ней сервер решает,
+# какие сниппеты уже можно отдавать (день N открывается за 8−N дней до релиза).
+# Пока пусто — сниппеты получают только авторы (секрет ADMIN_IDS).
+RELEASE_DATE = ""
+
+# Сниппеты и картинки процедурного листа (ключи day3, day4, …)
+[[kv_namespaces]]
+binding = "TEASERS"
+id = "8cedfbadf6554d9b93e016c7dd9d5e52"
 
 # База пациентов. database_id появится после `npx wrangler d1 create sdpn` — впишите его сюда.
 [[d1_databases]]

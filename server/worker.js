@@ -42,7 +42,7 @@ const clean = (s) => String(s || '').replace(/[\s﻿]/g, '');
 
 export default {
   async fetch(req, rawEnv) {
-    const env = { ...rawEnv, BOT_TOKEN: clean(rawEnv.BOT_TOKEN), ADMIN_KEY: clean(rawEnv.ADMIN_KEY), WEBHOOK_SECRET: clean(rawEnv.WEBHOOK_SECRET) };
+    const env = { ...rawEnv, BOT_TOKEN: clean(rawEnv.BOT_TOKEN), ADMIN_KEY: clean(rawEnv.ADMIN_KEY), WEBHOOK_SECRET: clean(rawEnv.WEBHOOK_SECRET), ADMIN_IDS: clean(rawEnv.ADMIN_IDS) };
     const url = new URL(req.url);
     const cors = corsHeaders(req, env);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
@@ -50,6 +50,7 @@ export default {
       if (url.pathname === '/register' && req.method === 'POST') return withCors(await register(req, env), cors);
       if (url.pathname === '/stats' && req.method === 'GET') return withCors(await stats(env), cors);
       if (url.pathname === '/status' && req.method === 'POST') return withCors(await status(req, env), cors);
+      if (url.pathname === '/teaser' && req.method === 'POST') return withCors(await teaser(req, env), cors);
       if (url.pathname === '/webhook' && req.method === 'POST') return await webhook(req, env);
       if (url.pathname.startsWith('/admin/')) {
         if (req.headers.get('X-Admin-Key') !== env.ADMIN_KEY || !env.ADMIN_KEY) return json({ error: 'forbidden' }, 403);
@@ -74,10 +75,10 @@ async function register(req, env) {
   if (!user.id) return json({ error: 'no user' }, 400);
 
   // только «чистые» короткие значения
-  const clean = (s, re, max) => (typeof s === 'string' && re.test(s) ? s.slice(0, max) : '');
-  const track = clean(body.track, /^[a-z0-9_-]+$/, 32);
-  const form = clean(body.form, /^[А-ЯA-Z0-9-]+$/, 16);
-  const card = clean(body.card, /^[А-ЯA-Z0-9-]+$/, 16);
+  const pick = (s, re, max) => (typeof s === 'string' && re.test(s) ? s.slice(0, max) : '');
+  const track = pick(body.track, /^[a-z0-9_-]+$/, 32);
+  const form = pick(body.form, /^[А-ЯA-Z0-9-]+$/, 16);
+  const card = pick(body.card, /^[А-ЯA-Z0-9-]+$/, 16);
   if (!track) return json({ error: 'bad track' }, 400);
 
   const existing = await env.DB.prepare('SELECT active FROM patients WHERE id = ?').bind(user.id).first();
@@ -156,6 +157,35 @@ async function status(req, env) {
   const user = JSON.parse(data.get('user') || '{}');
   const row = user.id ? await env.DB.prepare('SELECT active FROM patients WHERE id = ?').bind(user.id).first() : null;
   return json({ active: !!(row && row.active) });
+}
+
+/* ---------- Сниппеты процедурного листа ----------
+   Файл (ключ dayN в KV) отдаётся, только когда наступил его день:
+   день N открывается за (8 − N) суток до RELEASE_DATE — так же, как в приложении.
+   Авторы (Telegram ID в секрете ADMIN_IDS через запятую) получают любой файл в любое время — для /preview. */
+const DAY_MS = 864e5;
+async function teaser(req, env) {
+  const body = JSON.parse(await req.text());
+  const key = typeof body.key === 'string' && /^day([1-9])$/.exec(body.key);
+  if (!key) return json({ error: 'bad key' }, 400);
+  const day = parseInt(key[1], 10);
+
+  let allowed = false;
+  const release = env.RELEASE_DATE ? Date.parse(env.RELEASE_DATE) : NaN;
+  if (!isNaN(release) && Date.now() >= release - (8 - day) * DAY_MS) allowed = true;
+  if (!allowed && body.initData) {
+    const data = await verifyInitData(body.initData, env.BOT_TOKEN);
+    const id = data && JSON.parse(data.get('user') || '{}').id;
+    const admins = clean(env.ADMIN_IDS).split(',').filter(Boolean);
+    if (id && admins.includes(String(id))) allowed = true;
+  }
+  if (!allowed) return json({ error: 'locked' }, 403);
+
+  const { value, metadata } = await env.TEASERS.getWithMetadata(body.key, { type: 'arrayBuffer' });
+  if (!value) return json({ error: 'not uploaded' }, 404);
+  return new Response(value, {
+    headers: { 'Content-Type': (metadata && metadata.type) || 'audio/mpeg', 'Cache-Control': 'private, no-store' },
+  });
 }
 
 /* ---------- Статистика ---------- */
