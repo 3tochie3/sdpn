@@ -112,6 +112,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .btn-ink { background: var(--blue); color: #fff; }
 .btn-ghost { background: transparent; color: var(--bg-text); border: 1.5px solid color-mix(in srgb, var(--bg-text) 22%, transparent); }
 .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* «Канал» подсвечен после «Препарат ещё не поступил…» */
+.btn.glow { background: var(--blue); color: #fff; border-color: transparent; animation: glow 1.1s ease-in-out 5; }
+@keyframes glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(36, 66, 163, 0); transform: scale(1); } 50% { box-shadow: 0 0 0 9px rgba(36, 66, 163, .35); transform: scale(1.03); } }
 .actions { display: grid; gap: 10px; margin-top: 16px; }
 /* в Telegram основную кнопку дублирует MainButton — внутреннюю прячем */
 .tg-main .mb-dup { display: none; }
@@ -507,7 +510,7 @@ const CONTENT = {
 
   /* ---------- Ссылки (заполните перед публикацией) ---------- */
   links: {
-    channel: '',            // ссылка на канал, например 'https://t.me/troetochie'
+    channel: 'https://t.me/TROETOCHIE_TGK', // канал ТРОЕТОЧИЕ
     miniApp: 'https://t.me/sdpn_clinic_bot/exam', // прямая ссылка на мини-приложение 'https://t.me/<бот>/<app>' — пойдёт виджетом в сторис
     // Папка с готовыми картинками для сторис (относительно index.html).
     // Telegram берёт картинку для shareToStory только по публичной https-ссылке, поэтому они лежат рядом.
@@ -675,7 +678,7 @@ const CONTENT = {
     storyFallbackHint: 'Сохраните картинку и опубликуйте её в сторис вручную. Назначение вступает в силу с момента публикации.',
     storyText: 'Мне поставили диагноз. Альбом «СДПН» — ТРОЕТОЧИЕ. Пройди обследование и ты.',
     albumBy: 'альбом',
-    noLink: 'Препарат ещё не поступил в аптеки. Следите за каналом.',
+    noLink: 'Препарат ещё не поступил в аптеки. Следите за каналом — дату поступления объявят там.',
     noChannel: 'Ссылка на канал появится позже.',
     preparing: 'Оформляем документ…',
     disclaimer: 'Обследование вымышлено и является частью художественного замысла альбома. Это не психологический тест. Если вам действительно тяжело — обратитесь к специалисту.',
@@ -1001,7 +1004,10 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 const get = (path) => path.split('.').reduce((o, k) => o && o[k], CONTENT);
 const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 2600); }
-function alertMsg(msg) { if (IN_TG && tgv('6.2')) tg.showAlert(msg); else toast(msg); }
+function alertMsg(msg, then) {
+  if (IN_TG && tgv('6.2')) { try { tg.showAlert(msg, then); return; } catch (e) {} }
+  toast(msg); if (then) then();
+}
 
 /* ---------- Состояние ---------- */
 const state = {
@@ -1728,12 +1734,24 @@ function renderResult(opts = {}) {
 const rxLabel = () => releaseInfo().phase === 'prerelease' ? CONTENT.prerelease.presaveBtn : CONTENT.ui.acceptBtn;
 function acceptRx() {
   haptic.tap();
-  if (releaseInfo().phase === 'prerelease') {
-    if (!openUrl(CONTENT.release.presaveUrl || CONTENT.links.channel)) alertMsg(CONTENT.prerelease.noPresave);
+  const phase = releaseInfo().phase;
+  // неделя до релиза — пресейв; если его ещё нет — предупреждение и подсветка «Канала»
+  if (phase === 'prerelease') {
+    if (!openUrl(CONTENT.release.presaveUrl)) alertMsg(CONTENT.prerelease.noPresave, highlightChannel);
     return;
   }
-  const url = state.result.track.url || CONTENT.release.albumUrl || CONTENT.links.channel;
-  if (!openUrl(url)) alertMsg(CONTENT.ui.noLink);
+  // после релиза — трек или альбом
+  if (phase === 'released' && openUrl(state.result.track.url || CONTENT.release.albumUrl)) return;
+  // препарат ещё не поступил: предупреждаем и подсвечиваем кнопку «Канал»
+  alertMsg(CONTENT.ui.noLink, highlightChannel);
+}
+/* Подсветить кнопку «Канал»: синяя, пульсирует, прокручиваем к ней */
+function highlightChannel() {
+  const b = $('#btn-channel');
+  if (!b || !CONTENT.links.channel) return;
+  b.classList.remove('glow'); void b.offsetWidth; b.classList.add('glow');
+  b.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  haptic.light();
 }
 
 /* =====================================================================
@@ -1831,7 +1849,7 @@ async function register() {
 }
 $('#btn-rx').addEventListener('click', acceptRx);
 $('#btn-again').addEventListener('click', () => { haptic.tap(); state.result = null; renderStart(); });
-$('#btn-channel').addEventListener('click', () => { haptic.tap(); if (!openUrl(CONTENT.links.channel)) alertMsg(CONTENT.ui.noChannel); });
+$('#btn-channel').addEventListener('click', (e) => { haptic.tap(); e.currentTarget.classList.remove('glow'); if (!openUrl(CONTENT.links.channel)) alertMsg(CONTENT.ui.noChannel); });
 $('#btn-save').addEventListener('click', () => openSaveOverlay(CONTENT.ui.saveHint));
 $('#btn-story').addEventListener('click', shareStory);
 $('#btn-start').addEventListener('click', startQuiz);
