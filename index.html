@@ -397,7 +397,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 <body>
 <div class="app" id="app">
 
-  <!-- Вкладки медкарты. «Процедуры» — только в предрелизный период. -->
+  <!-- Вкладки медкарты: Регистратура · Результаты · Процедуры -->
   <nav class="tabs" id="tabs" hidden>
     <button class="tab" data-tab="s-start" data-t="history.tabStart"></button>
     <button class="tab" data-tab="s-hist"><span data-t="history.tab"></span><span class="tab-count" id="tab-count"></span></button>
@@ -551,7 +551,7 @@ const CONTENT = {
     status: 'Статус назначения: препарат ожидает поступления в аптеки.',
     statusReleased: 'Статус назначения: препарат выдан.',
     regTitle: 'Постановка на учёт',
-    regText: 'Дежурный врач лично сообщит вам о поступлении препарата и пришлёт назначение в день релиза.',
+    regText: 'Вставшим на учёт выдаётся процедурный лист. Дежурный врач лично сообщит о поступлении препарата и пришлёт назначение в день релиза.',
     regBtn: 'Встать на учёт',
     regPrivacy: 'Сохраняется только ваш Telegram ID и номер назначенного трека. Снять с учёта — команда /stop в чате с ботом.',
     regDone: 'Вы поставлены на учёт. Ожидайте сообщения от дежурного врача.',
@@ -560,6 +560,9 @@ const CONTENT = {
     regOnlyTg: 'Встать на учёт можно, открыв обследование в Telegram.',
     procTitle: 'Процедурный лист',
     procSub: 'Курс подготовки к приёму препарата. Процедуры открываются ежедневно, по одной.',
+    procWaiting: 'Вы поставлены на учёт. Курс из 7 процедур начнётся за неделю до поступления препарата в аптеки. Дата будет объявлена дополнительно — дежурный врач сообщит лично.',
+    procFinished: 'Курс подготовки завершён. Препарат выдан. Все процедуры доступны для повторного прохождения.',
+    procTbd: 'дата уточняется',
     tabProc: 'Процедуры',
     gateStamp: 'НЕ ВЫДАН',
     gateText: 'Чтобы получить процедурный лист, необходимо пройти обследование и встать на учёт.',
@@ -1108,10 +1111,9 @@ function mountGlitch(el) {
 /* ---------- Экраны ---------- */
 function show(id) {
   document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('active', s.id === id));
-  // вкладки медкарты — на регистратуре, в результатах и в процедурном листе; «Процедуры» — только до релиза
+  // вкладки медкарты — на регистратуре, в результатах и в процедурном листе (все три — всегда)
   const tabsOn = ['s-start', 's-hist', 's-proc'].includes(id);
   $('#tabs').hidden = !tabsOn;
-  $('#tab-proc').hidden = releaseInfo().phase !== 'prerelease';
   document.body.classList.toggle('has-tabs', tabsOn);
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === id));
   $('#tab-lock').classList.toggle('off', isRegistered());
@@ -1287,10 +1289,10 @@ async function loadStats() {
 /* ---------- Процедурный лист ---------- */
 function renderProcedures() {
   const box = $('#proc'), r = releaseInfo(), P = CONTENT.prerelease, list = CONTENT.procedures;
-  if (r.phase !== 'prerelease') { box.hidden = true; return; }
   box.hidden = false;
   const n = list.length;
-  const opened = Math.max(0, Math.min(n, n + 1 - r.daysLeft)); // сколько дней уже открыто
+  // сколько дней открыто: до объявления даты — ни одного, в неделю до релиза — по дню, после релиза — все
+  const opened = r.phase === 'prerelease' ? Math.max(0, Math.min(n, n + 1 - r.daysLeft)) : r.phase === 'released' ? n : 0;
 
   // Лист выдаётся только вставшим на учёт: до этого — «НЕ ВЫДАН» и вымаранные строки
   const gated = !isRegistered();
@@ -1315,9 +1317,10 @@ function renderProcedures() {
     if (p.kind === 'tracklist') h += `<ol>${(p.items || Object.values(CONTENT.tracks).map((t) => t.title)).map((t) => `<li>${esc(t)}</li>`).join('')}</ol>`;
     return h;
   };
-  box.innerHTML = `<h2>${esc(P.procTitle)}</h2><div class="p-sub">${esc(P.procSub)}</div>` + list.map((p, i) => {
-    const open = i < opened, today = i === opened - 1;
-    const status = open ? (today ? '' : P.procDone) : P.procLocked(i + 1 - opened);
+  const sub = r.phase === 'none' ? P.procWaiting : r.phase === 'released' ? P.procFinished : P.procSub;
+  box.innerHTML = `<h2>${esc(P.procTitle)}</h2><div class="p-sub">${esc(sub)}</div>` + list.map((p, i) => {
+    const open = i < opened, today = r.phase === 'prerelease' && i === opened - 1;
+    const status = open ? (today ? '' : P.procDone) : r.phase === 'none' ? P.procTbd : P.procLocked(i + 1 - opened);
     return `<div class="p-row ${open ? 'open' : 'locked'}${today ? ' today expanded' : ''}" data-i="${i}">
       <button class="p-head" ${open ? '' : 'disabled'}><span class="d">${esc(P.procDay(i + 1))}</span><span class="t${open ? '' : ' redacted'}">${open ? esc(p.title) : ''}</span><span class="s">${esc(status)}</span></button>
       ${open ? `<div class="p-body">${body(p, i)}</div>` : ''}</div>`;
@@ -1762,7 +1765,8 @@ function refreshRegViews() {
 }
 function renderRegCard() {
   const box = $('#reg-card'), P = CONTENT.prerelease;
-  if (releaseInfo().phase !== 'prerelease' || !CONTENT.api) { box.hidden = true; return; }
+  // встать на учёт можно всегда: до объявления даты, в неделю до релиза и после (тогда сразу открыт весь процедурный лист)
+  if (!CONTENT.api) { box.hidden = true; return; }
   box.hidden = false;
   syncRegStatus();
   box.innerHTML = `<div class="r-title">${esc(P.regTitle)}</div><div class="r-text">${esc(P.regText)}</div>` +
