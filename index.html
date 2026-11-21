@@ -308,6 +308,15 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .dose-ecg .fg { stroke: var(--red); stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset .25s linear; }
 .dose-time { font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft); }
 .dose.playing .dose-btn { background: var(--red); }
+/* Видеодоза */
+.vdose { margin-top: 10px; aspect-ratio: 1 / 1; background: #121214; border: 1px solid var(--ink); position: relative; overflow: hidden;
+  background-image: repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, transparent 1px 4px); }
+.vdose video { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.vdose-start { position: absolute; inset: 0; width: 100%; border: 0; background: none; color: #f5f0e3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-family: var(--sans); }
+.vdose-start .vd-i { width: 64px; height: 64px; border-radius: 50%; background: var(--red); display: grid; place-items: center; font-size: 22px; padding-left: 4px; box-shadow: 0 0 0 8px rgba(196,48,43,.18); }
+.vdose-start .vd-l { font-weight: 600; font-size: 15px; }
+.vdose-start .vd-s { font-family: var(--mono); font-size: 11px; color: #8d8b85; letter-spacing: .08em; }
+.vdose-start:active .vd-i { transform: scale(.95); }
 .p-body img { width: 100%; margin-top: 8px; border: 1px solid var(--rule); filter: grayscale(1) contrast(1.15); }
 .p-body ol { margin: 6px 0 0; padding-left: 1.4em; font-family: var(--mono); font-size: 13px; }
 
@@ -507,6 +516,7 @@ const CONTENT = {
      День 1 открывается за 7 дней до релиза, день 7 — накануне.
      kind: 'text' — просто текст; 'quote' — цитата (строки из трека);
            'audio' — сниппет: положите mp3 в папку teasers/ и впишите src: 'teasers/day3.mp3';
+           'video' — видеосниппет (mp4, H.264, до ~10 МБ): так же через src или secure;
            'image' — картинка (обложка и т.п.): src: 'teasers/cover.jpg';
            'tracklist' — «состав препарата»: берётся из списка треков ниже.
      Если у audio/image пустой src — показывается только текст.
@@ -523,8 +533,8 @@ const CONTENT = {
       text: 'Снимок препарата. Изображение проявляется не сразу.' },
     { title: 'Состав препарата', kind: 'tracklist',
       text: 'Действующие вещества, в порядке приёма:' },
-    { title: 'Повторная пробная доза', kind: 'audio', src: '',
-      text: 'Доза увеличена. Громкость — по самочувствию.' },
+    { title: 'Повторная пробная доза', kind: 'video', secure: true,
+      text: 'Доза увеличена. Действует на слух и зрение. Громкость — по самочувствию.' },
     { title: 'Подготовка к приёму', kind: 'text',
       text: 'Зарядите наушники. Освободите ночь. Предупредите близких, что всё будет не нормально.' },
   ],
@@ -1084,6 +1094,7 @@ function renderProcedures() {
     if (p.kind === 'quote') h += `<blockquote>«${esc(p.text)}»</blockquote>${p.caption ? `<div class="cap">${esc(p.caption)}</div>` : ''}`;
     else h += `<div>${esc(p.text || '')}</div>`;
     if (p.kind === 'audio' && (p.src || (p.secure && CONTENT.api))) h += dosePlayerHTML(p.src || '', `day${i + 1}`);
+    if (p.kind === 'video' && (p.src || (p.secure && CONTENT.api))) h += videoDoseHTML(p.src || '', `day${i + 1}`);
     if (p.kind === 'image' && p.src) h += `<img src="${esc(p.src)}" alt="${esc(p.title)}" loading="lazy">`;
     if (p.kind === 'image' && !p.src && p.secure && CONTENT.api) h += `<img class="secure-img" data-key="day${i + 1}" alt="${esc(p.title)}" hidden>`;
     if (p.kind === 'tracklist') h += `<ol>${(p.items || Object.values(CONTENT.tracks).map((t) => t.title)).map((t) => `<li>${esc(t)}</li>`).join('')}</ol>`;
@@ -1104,6 +1115,8 @@ function renderProcedures() {
 $('#proc').addEventListener('click', (e) => {
   const btn = e.target.closest('.dose-btn');
   if (btn) { toggleDose(btn.closest('.dose')); return; }
+  const vbtn = e.target.closest('.vdose-start');
+  if (vbtn) { startVideoDose(vbtn.closest('.vdose')); return; }
   const row = e.target.closest('.p-row.open');
   if (!row || !e.target.closest('.p-head')) return;
   row.classList.toggle('expanded');
@@ -1133,6 +1146,35 @@ function fetchTeaser(key) {
   })();
   return teaserCache[key];
 }
+/* ---------- Видеодоза ----------
+   До нажатия — тёмный «снимок» с кнопкой (файл не грузится, трафик не тратится).
+   По нажатию файл приходит с сервера (в свой день) и играет прямо в листе, без полноэкранного режима. */
+function videoDoseHTML(src, key) {
+  return `<div class="vdose" data-src="${esc(src)}" data-key="${esc(key)}">
+    <button class="vdose-start"><span class="vd-i">▶</span><span class="vd-l">Принять видеодозу</span><span class="vd-s">звук включён</span></button>
+  </div>`;
+}
+async function startVideoDose(box) {
+  haptic.tap();
+  const btn = box.querySelector('.vdose-start'), label = btn.querySelector('.vd-l');
+  label.textContent = 'Получение дозы…';
+  let src = box.dataset.src;
+  try { if (!src) src = await fetchTeaser(box.dataset.key); }
+  catch (e) {
+    label.textContent = 'Принять видеодозу';
+    alertMsg(String(e.message) === '403' ? 'Доза ещё не выдана. Процедура откроется в свой день.' : 'Препарат временно недоступен. Попробуйте позже.');
+    return;
+  }
+  if (currentDose) currentDose.pause();
+  const v = document.createElement('video');
+  v.src = src; v.controls = true; v.playsInline = true; v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', '');
+  v.setAttribute('controlslist', 'nodownload noplaybackrate'); v.disablePictureInPicture = true;
+  v.addEventListener('contextmenu', (ev) => ev.preventDefault());
+  box.innerHTML = ''; box.appendChild(v); box.classList.add('on');
+  currentDose = v;
+  v.play().catch(() => {});
+}
+
 let currentDose = null;
 async function toggleDose(box) {
   haptic.tap();

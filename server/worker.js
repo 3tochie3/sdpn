@@ -135,9 +135,13 @@ async function webhook(req, env) {
   const appBtn = { reply_markup: { inline_keyboard: [[{ text: TEXT.startBtn, web_app: { url: env.MINIAPP_URL } }]] } };
 
   if (text.startsWith('/preview')) {
-    // скрытая команда автора: открыть приложение «за 5 дней до релиза», чтобы проверить предрелизный режим
-    const preview = { reply_markup: { inline_keyboard: [[{ text: 'Предпросмотр: за 5 дней до релиза', web_app: { url: env.MINIAPP_URL + '?days=5&v=' + Date.now() } }]] } }; // v= — чтобы Telegram не открыл старую копию
-    await tg(env, 'sendMessage', { chat_id: msg.chat.id, text: 'Режим предпросмотра. Так приложение будет выглядеть за 5 дней до релиза.', ...preview });
+    // скрытая команда автора: открыть приложение в предрелизном режиме (v= — чтобы Telegram не открыл старую копию)
+    const v = Date.now();
+    const preview = { reply_markup: { inline_keyboard: [
+      [{ text: 'Накануне релиза (открыты все 7 дней)', web_app: { url: `${env.MINIAPP_URL}?days=1&v=${v}` } }],
+      [{ text: 'За 5 дней до релиза', web_app: { url: `${env.MINIAPP_URL}?days=5&v=${v}` } }],
+    ] } };
+    await tg(env, 'sendMessage', { chat_id: msg.chat.id, text: 'Режим предпросмотра. Выберите, какой день показать.\nСниппеты в предпросмотре доступны только авторам.', ...preview });
   } else if (text.startsWith('/start')) {
     await tg(env, 'sendMessage', { chat_id: msg.chat.id, text: TEXT.start, ...appBtn });
   } else if (text.startsWith('/stop')) {
