@@ -18,32 +18,43 @@
  * Храним минимум: Telegram ID, назначенный трек, код формы, номер карты, дату. Без имён и телефонов.
  */
 
-const HEAD = `МИНИСТЕРСТВО ЗВУКОВОГО ЗДРАВООХРАНЕНИЯ\nЦентр музыкальной психотерапии «СДПН»\n\n`;
+/* Все сообщения — в HTML-разметке Telegram: <b> жирный, <i> курсив, <blockquote> выделенный блок, <a> ссылка.
+   Крупного шрифта в тексте Telegram не даёт — «крупно» делает баннер-картинка над сообщением (stories/bot-*.jpg). */
+const escHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const HEAD = `<b>МИНИСТЕРСТВО ЗВУКОВОГО ЗДРАВООХРАНЕНИЯ</b>\n<i>Центр музыкальной психотерапии «СДПН»</i>\n\n`;
+const STOP = `\n\n<i>Снять с учёта: /stop</i>`;
+/* «СДПН» — жирным и ссылкой на релиз (альбом → пресейв → канал, что есть) */
+const ALB = (site) => {
+  const link = site && (site.album || site.presave || site.channel);
+  return link ? `<b><a href="${escHtml(link)}">«СДПН»</a></b>` : '<b>«СДПН»</b>';
+};
+const DAYS = (n) => `${n} ${plural(n, 'день', 'дня', 'дней')}`;
 const TEXT = {
   // подтверждение постановки на учёт — зависит от того, идёт ли уже курс процедур
-  registered: (p, c) =>
+  registered: (p, c, site) =>
     HEAD +
-    `Пациент поставлен на учёт.\n` +
-    `Карта № ${p.card} · диагноз ${p.form}.\n\n` +
+    `<b>ПАЦИЕНТ ПОСТАВЛЕН НА УЧЁТ</b>\n` +
+    `Карта № <code>${escHtml(p.card)}</code> · диагноз <b>${escHtml(p.form)}</b>\n\n` +
     (c.phase === 'course'
-      ? `Курс подготовки уже идёт: открыто процедур — ${c.opened} из 7. Пропущенные процедуры доступны в процедурном листе.\n` +
-        `До выхода «СДПН»: ${c.daysLeft} ${plural(c.daysLeft, 'день', 'дня', 'дней')}.\n\n`
+      ? `<blockquote>Курс подготовки уже идёт: открыто процедур — <b>${c.opened} из 7</b>. Пропущенные процедуры доступны в процедурном листе.</blockquote>\n` +
+        `До выхода ${ALB(site)}: <b>${DAYS(c.daysLeft)}</b>.`
       : c.phase === 'released'
-        ? `Препарат «СДПН» уже поступил на все площадки. Процедурный лист открыт полностью.\n\n`
-        : `Препарат «СДПН» (ТРОЕТОЧИЕ) проходит последние испытания. Вам выдан процедурный лист: ` +
-          `курс из 7 процедур начнётся за неделю до поступления препарата в аптеки. ` +
-          `Дежурный врач будет сообщать о каждой процедуре и лично пришлёт назначение в день релиза.\n\n`) +
-    `Снять с учёта: /stop`,
+        ? `Препарат ${ALB(site)} уже поступил на все площадки.\n<blockquote>Процедурный лист открыт полностью.</blockquote>`
+        : `Препарат ${ALB(site)} · ТРОЕТОЧИЕ проходит последние испытания.\n\n` +
+          `<blockquote>Вам выдан <b>процедурный лист</b>: курс из 7 процедур начнётся за неделю до поступления препарата в аптеки.</blockquote>\n` +
+          `Дежурный врач будет сообщать о каждой процедуре и лично пришлёт назначение в день релиза.`) +
+    STOP,
   openProc: '▶ Открыть процедурный лист',
   start:
-    `МИНИСТЕРСТВО ЗВУКОВОГО ЗДРАВООХРАНЕНИЯ\n` +
-    `Центр музыкальной психотерапии «СДПН»\n\n` +
-    `Регистратура открыта. Пациент, пройдите обследование.\n` +
-    `Альбом «СДПН» — ТРОЕТОЧИЕ.`,
+    HEAD +
+    `Регистратура открыта.\n<b>Пациент, пройдите обследование.</b>\n\n` +
+    `Альбом <b>«СДПН»</b> — ТРОЕТОЧИЕ.`,
   startBtn: 'Пройти обследование',
-  stop: 'Вы сняты с учёта. Сообщений от дежурного врача больше не будет.\nВернуться: пройдите обследование и снова нажмите «Встать на учёт».',
-  other: 'Дежурный врач принимает только через регистратуру.',
+  stop: '<b>Вы сняты с учёта.</b>\nСообщений от дежурного врача больше не будет.\n\n<i>Вернуться: пройдите обследование и снова нажмите «Встать на учёт».</i>',
+  other: '<i>Дежурный врач принимает только через регистратуру.</i>',
 };
+const BANNER_V = '1'; // поменять, если перерисовали баннеры (Telegram кэширует картинки по адресу)
+const banner = (env, id) => `${env.MINIAPP_URL}stories/bot-${id}.jpg?v=${BANNER_V}`;
 
 /* Секреты, вставленные через терминал, иногда приходят с пробелами, переводом строки или BOM — чистим */
 const clean = (s) => String(s || '').replace(/[\s﻿]/g, '');
@@ -113,10 +124,13 @@ async function register(req, env) {
   // подтверждение — только при первой постановке (или повторной после /stop)
   if (!existing || !existing.active) {
     const c = courseState(env);
-    await tg(env, 'sendMessage', {
+    let site = { presave: '', album: '', channel: '' };
+    try { site = await loadSite(env); } catch (e) {} // сайт недоступен — просто без ссылок
+    await sendRich(env, {
       chat_id: user.id,
-      text: TEXT.registered({ card: card || '—', form: form || 'СДПН' }, c),
-      reply_markup: { inline_keyboard: await registeredButtons(env, c) },
+      photo: banner(env, 'uchet'),
+      html: TEXT.registered({ card: card || '—', form: form || 'СДПН' }, c, site),
+      reply_markup: { inline_keyboard: registeredButtons(env, c, site) },
     });
   }
   return json({ ok: true });
@@ -124,13 +138,29 @@ async function register(req, env) {
 
 /* Кнопки под подтверждением постановки на учёт:
    до курса — процедурный лист; во время курса — лист + «Предзаказ «СДПН»»; после релиза — «Слушать «СДПН»» + лист */
-async function registeredButtons(env, c) {
+function registeredButtons(env, c, site) {
   const proc = [{ text: TEXT.openProc, web_app: { url: appUrl(env, 'proc') } }];
-  if (c.phase !== 'course' && c.phase !== 'released') return [proc];
-  let site = { presave: '', album: '' };
-  try { site = await loadSite(env); } catch (e) {} // сайт недоступен — просто без ссылок
   if (c.phase === 'course') return site.presave ? [proc, [{ text: 'Предзаказ «СДПН»', url: site.presave }]] : [proc];
-  return site.album ? [[{ text: '▶ Слушать «СДПН»', url: site.album }], proc] : [proc];
+  if (c.phase === 'released') return site.album ? [[{ text: '▶ Слушать «СДПН»', url: site.album }], proc] : [proc];
+  return [proc];
+}
+
+/* Отправка «красивого» сообщения: баннер + подпись в HTML.
+   Подпись к фото — до 1024 символов; длиннее — обычное сообщение с баннером как большим превью сверху.
+   Если Telegram не смог взять картинку — отправляем просто текст. Возвращает HTTP-статус Telegram. */
+async function sendRich(env, { chat_id, photo, html, reply_markup }) {
+  const call = async (method, payload) => (await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  })).status;
+  const visible = html.replace(/<[^>]+>/g, '').length; // лимит считается по видимому тексту
+  if (photo && visible <= 1000) {
+    const st = await call('sendPhoto', { chat_id, photo, caption: html, parse_mode: 'HTML', reply_markup });
+    if (st !== 400) return st; // 400 — не получилось с картинкой, пробуем текстом
+  }
+  return call('sendMessage', {
+    chat_id, text: html, parse_mode: 'HTML', reply_markup,
+    link_preview_options: photo ? { url: photo, prefer_large_media: true, show_above_text: true } : { is_disabled: true },
+  });
 }
 
 /* ---------- Новое обследование у пациента на учёте: дописать трек в его назначения ---------- */
@@ -199,12 +229,12 @@ async function webhook(req, env) {
     ] } };
     await tg(env, 'sendMessage', { chat_id: msg.chat.id, text: 'Режим предпросмотра. Выберите, какой день показать.\nСниппеты в предпросмотре доступны только авторам.', ...preview });
   } else if (text.startsWith('/start')) {
-    await tg(env, 'sendMessage', { chat_id: msg.chat.id, text: TEXT.start, ...appBtn });
+    await tg(env, 'sendMessage', { chat_id: msg.chat.id, text: TEXT.start, parse_mode: 'HTML', ...appBtn });
   } else if (text.startsWith('/stop')) {
     await env.DB.prepare('UPDATE patients SET active = 0 WHERE id = ?').bind(msg.chat.id).run();
-    await tg(env, 'sendMessage', { chat_id: msg.chat.id, text: TEXT.stop });
+    await tg(env, 'sendMessage', { chat_id: msg.chat.id, text: TEXT.stop, parse_mode: 'HTML' });
   } else {
-    await tg(env, 'sendMessage', { chat_id: msg.chat.id, text: TEXT.other, ...appBtn });
+    await tg(env, 'sendMessage', { chat_id: msg.chat.id, text: TEXT.other, parse_mode: 'HTML', ...appBtn });
   }
   return new Response('ok');
 }
@@ -329,45 +359,43 @@ async function loadSite(env) {
   for (const m of block('tracks: {', '/* ---------- Формы диагноза').matchAll(/(\w+):\s*\{\s*title:\s*'([^']*)',\s*url:\s*'([^']*)'/g)) tracks[m[1]] = { title: m[2], url: m[3] };
   const album = (/albumUrl:\s*'([^']*)'/.exec(html) || [])[1] || '';
   const presave = (/presaveUrl:\s*'([^']*)'/.exec(html) || [])[1] || '';
-  return { procs, tracks, album, presave };
+  const channel = (/channel:\s*'([^']*)'/.exec(html) || [])[1] || '';
+  return { procs, tracks, album, presave, channel };
 }
 function buildMessage(c, p, site, env) {
   if (c.key === 'release') {
     // Курс пройден, альбом вышел: все треки, назначенные пациенту за все обследования, + кнопка на альбом
     const ids = trackList(p);
-    const titles = ids.map((id) => `— «${(site.tracks[id] || { title: id }).title}»`);
+    const titles = ids.map((id) => `— <b>«${escHtml((site.tracks[id] || { title: id }).title)}»</b>`);
     const rows = [[site.album
       ? { text: '▶ Слушать «СДПН»', url: site.album }
       : { text: '▶ Открыть медкарту', web_app: { url: appUrl(env, 'hist') } }]];
     return {
-      text: HEAD + `Курс первоначального лечения пройден.\n` +
-        `Препарат «СДПН» поступил на все площадки.\n\n` +
-        `Карта № ${p.card || '—'} · диагноз ${p.form || 'СДПН'}\n` +
-        (ids.length > 1 ? `Ваши назначения по результатам обследований:\n` : `Ваше назначение:\n`) +
-        titles.join('\n') + `\nс альбома «СДПН» — ТРОЕТОЧИЕ.\n\n` +
-        `Способ применения: аурикулярно, через наушники.\nРежим: ежедневно, предпочтительно ночью, на высокой громкости.\n` +
-        `Длительность курса: до восстановления эмоциональной нестабильности.\n\nСнять с учёта: /stop`,
+      photo: banner(env, 'release'),
+      html: HEAD +
+        `<b>КУРС ПЕРВОНАЧАЛЬНОГО ЛЕЧЕНИЯ ПРОЙДЕН</b>\n` +
+        `Препарат ${ALB(site)} поступил на все площадки.\n\n` +
+        `Карта № <code>${escHtml(p.card || '—')}</code> · диагноз <b>${escHtml(p.form || 'СДПН')}</b>\n` +
+        (ids.length > 1 ? `<b>Ваши назначения по результатам обследований:</b>\n` : `<b>Ваше назначение:</b>\n`) +
+        titles.join('\n') + `\nс альбома ${ALB(site)} — ТРОЕТОЧИЕ.\n\n` +
+        `<blockquote>Способ применения: аурикулярно, через наушники.\nРежим: ежедневно, предпочтительно ночью, на высокой громкости.\n` +
+        `Длительность курса: до восстановления эмоциональной нестабильности.</blockquote>` + STOP,
       reply_markup: { inline_keyboard: rows },
     };
   }
   const title = site.procs[c.n - 1] || `Процедура № ${c.n}`;
   const line = (DAILY_LINES[c.n - 1] || '').replace('{tracks}', String(Object.keys(site.tracks).length));
   return {
-    text: HEAD + `Процедурный лист · День ${c.n} из 7\n\n` +
-      `Пациент, открыта процедура № ${c.n} — «${title}».\n${line}\n\n` +
-      `До выхода «СДПН»: ${c.daysLeft} ${plural(c.daysLeft, 'день', 'дня', 'дней')}.\n` +
-      `Пропуск процедур не рекомендуется.\n\nСнять с учёта: /stop`,
+    photo: banner(env, `day${c.n}`),
+    html: HEAD + `<b>ПРОЦЕДУРНЫЙ ЛИСТ · ДЕНЬ ${c.n} ИЗ 7</b>\n\n` +
+      `Пациент, открыта процедура № ${c.n}:\n<b>«${escHtml(title)}»</b>\n<i>${escHtml(line)}</i>\n\n` +
+      `<blockquote>До выхода ${ALB(site)}: <b>${DAYS(c.daysLeft)}</b></blockquote>\n` +
+      `Пропуск процедур не рекомендуется.` + STOP,
     reply_markup: { inline_keyboard: [
       [{ text: '▶ Принять процедуру', web_app: { url: appUrl(env, 'proc') } }],
       ...(site.presave ? [[{ text: 'Предзаказ «СДПН»', url: site.presave }]] : []), // пресейв — если ссылка уже вписана
     ] },
   };
-}
-async function sendRaw(env, payload) {
-  const r = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-  });
-  return r.status;
 }
 /* Один запуск: отправить следующую пачку текущей рассылки */
 async function runCampaign(env, now = Date.now()) {
@@ -380,7 +408,7 @@ async function runCampaign(env, now = Date.now()) {
   const site = await loadSite(env);
   let ok = 0, blocked = 0, errors = 0;
   for (const p of results) {
-    const st = await sendRaw(env, { chat_id: p.id, ...buildMessage(c, p, site, env) });
+    const st = await sendRich(env, { chat_id: p.id, ...buildMessage(c, p, site, env) });
     if (st === 429) break; // Telegram просит притормозить — продолжим в следующую минуту
     const status = st === 200 ? 'ok' : st === 403 ? 'blocked' : 'error';
     if (status === 'blocked') await env.DB.prepare('UPDATE patients SET active = 0 WHERE id = ?').bind(p.id).run();
@@ -406,7 +434,7 @@ async function campaignTest(req, env) {
   for (const id of ids) {
     const row = await env.DB.prepare('SELECT track, form, card, tracks FROM patients WHERE id = ?').bind(id).first();
     const p = { id, track: (row && row.track) || Object.keys(site.tracks)[0], form: (row && row.form) || 'СДПН-01', card: (row && row.card) || 'СДПН-000', tracks: (row && row.tracks) || '' };
-    out.push(await sendRaw(env, { chat_id: id, ...buildMessage(c, p, site, env) }));
+    out.push(await sendRich(env, { chat_id: id, ...buildMessage(c, p, site, env) }));
   }
   return json({ sent: out });
 }

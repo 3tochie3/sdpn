@@ -385,6 +385,17 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .overlay .btn-ghost { color: #e9e6dd; border-color: rgba(255,255,255,.25); }
 .overlay .btn-primary { background: #f5f0e3; color: #1c1b18; }
 
+/* Окно-предупреждение с зелёной «ХОРОШО» */
+.modal { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; padding: 24px;
+  background: rgba(10, 10, 12, .62); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.modal[hidden] { display: none !important; }
+.modal-card { width: 100%; max-width: 340px; background: var(--paper); color: var(--ink); border-radius: 14px; padding: 18px 18px 16px;
+  box-shadow: 0 20px 50px rgba(0,0,0,.45); animation: modalIn .22s cubic-bezier(.2,.8,.2,1) both; font-family: var(--serif); }
+@keyframes modalIn { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+.modal-head { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; color: var(--ink-faint); text-align: center; padding-bottom: 10px; border-bottom: 1px dashed var(--rule); }
+.modal-text { font-size: 17px; line-height: 1.45; text-align: center; margin: 14px 2px 16px; }
+.modal-ok { background: #2e9a5a; color: #fff; font-weight: 700; letter-spacing: .08em; min-height: 50px; }
+.modal-ok:active { background: #257f4a; }
 .toast {
   position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px);
   background: #1c1b18; color: #f5f0e3; font-size: 13.5px; padding: 10px 14px; border-radius: 10px;
@@ -500,6 +511,15 @@ button { font: inherit; color: inherit; cursor: pointer; }
   </div>
 </div>
 <div class="toast" id="toast"></div>
+
+<!-- Своё окно-предупреждение (вместо системного Telegram — чтобы кнопка была зелёной «ХОРОШО») -->
+<div class="modal" id="modal" role="dialog" aria-modal="true" hidden>
+  <div class="modal-card">
+    <div class="modal-head">МИНИСТЕРСТВО ЗВУКОВОГО ЗДРАВООХРАНЕНИЯ</div>
+    <div class="modal-text" id="modal-text"></div>
+    <button class="btn modal-ok" id="modal-ok">ХОРОШО</button>
+  </div>
+</div>
 
 <script>
 /* =====================================================================
@@ -678,7 +698,7 @@ const CONTENT = {
     storyFallbackHint: 'Сохраните картинку и опубликуйте её в сторис вручную. Назначение вступает в силу с момента публикации.',
     storyText: 'Мне поставили диагноз. Альбом «СДПН» — ТРОЕТОЧИЕ. Пройди обследование и ты.',
     albumBy: 'альбом',
-    noLink: 'Препарат ещё не поступил в аптеки. Следите за каналом — дату поступления объявят там.',
+    noLink: 'Препарат ещё не поступил в аптеки. Следите за каналом — дату поступления объявят в нём.',
     noChannel: 'Ссылка на канал появится позже.',
     preparing: 'Оформляем документ…',
     disclaimer: 'Обследование вымышлено и является частью художественного замысла альбома. Это не психологический тест. Если вам действительно тяжело — обратитесь к специалисту.',
@@ -1004,10 +1024,23 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 const get = (path) => path.split('.').reduce((o, k) => o && o[k], CONTENT);
 const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 2600); }
+/* Предупреждение: своё окно в стиле бланка с зелёной кнопкой «ХОРОШО» (системное окно Telegram цвет не меняет) */
+let modalThen = null;
 function alertMsg(msg, then) {
-  if (IN_TG && tgv('6.2')) { try { tg.showAlert(msg, then); return; } catch (e) {} }
-  toast(msg); if (then) then();
+  $('#modal-text').textContent = msg;
+  modalThen = then || null;
+  $('#modal').hidden = false;
+  haptic.light();
+  setTimeout(() => $('#modal-ok').focus(), 50);
 }
+function closeModal() {
+  $('#modal').hidden = true;
+  haptic.tap();
+  const t = modalThen; modalThen = null;
+  if (t) setTimeout(t, 120);
+}
+$('#modal-ok').addEventListener('click', closeModal);
+$('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
 
 /* ---------- Состояние ---------- */
 const state = {
@@ -1908,105 +1941,99 @@ function drawStamp(ctx, cx, cy, R, rot) {
 }
 
 async function drawCard(result, number, name) {
+  /* Карточка для сторис 1080×1920. Задача — чтобы увидевший захотел пройти сам:
+     крупный «узнаваемый» диагноз, симптомы галочками, назначение и тёмная плашка-призыв внизу.
+     Важное держим между ~200 и ~1720 px — сверху и снизу Telegram накладывает свой интерфейс. */
   await fontsReady();
-  const W = 1080, H = 1920, M = 92;
+  const W = 1080, H = 1920, M = 84;
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const x = c.getContext('2d');
   const f = result.form, inst = CONTENT.inst;
+  const ink = '#1c1b18', soft = '#5d584c', blue = '#2442a3', red = '#c4302b', paper = '#f5f0e3';
+  const bot = '@' + ((/t\.me\/([^/]+)/.exec(CONTENT.links.miniApp || '') || [])[1] || 'sdpn_clinic_bot');
+  const center = (t, yy) => { x.textAlign = 'center'; x.fillText(t, W / 2, yy); x.textAlign = 'left'; };
 
-  // бумага
-  x.fillStyle = '#f5f0e3'; x.fillRect(0, 0, W, H);
+  // бумага: фактура + виньетка
+  x.fillStyle = paper; x.fillRect(0, 0, W, H);
   for (let k = 0; k < 9000; k++) { x.fillStyle = `rgba(90,70,40,${Math.random() * .05})`; x.fillRect(Math.random() * W, Math.random() * H, 2, 2); }
-  const grad = x.createRadialGradient(W / 2, H / 2, H * .3, W / 2, H / 2, H * .75);
-  grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(1, 'rgba(110,90,50,.12)');
-  x.fillStyle = grad; x.fillRect(0, 0, W, H);
+  const vg = x.createRadialGradient(W / 2, H * .42, H * .25, W / 2, H * .42, H * .8);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(110,90,50,.16)');
+  x.fillStyle = vg; x.fillRect(0, 0, W, H);
+  x.textBaseline = 'alphabetic';
 
-  const ink = '#1c1b18', soft = '#5d584c';
-  const center = (t, y) => { x.textAlign = 'center'; x.fillText(t, W / 2, y); x.textAlign = 'left'; };
-  // Telegram перекрывает ~150px сверху и снизу сторис — важное держим в середине
-  let y = 140;
-  x.fillStyle = ink; x.textBaseline = 'alphabetic';
-  x.font = '700 28px "PT Serif"'; center(inst.ministry, y); y += 40;
-  x.font = '400 28px "PT Serif"'; center(inst.center, y); y += 36;
-  x.font = 'italic 400 26px "PT Serif"'; x.fillStyle = soft; center(inst.dept, y); y += 28;
-  x.fillStyle = ink; x.fillRect(M, y, W - 2 * M, 4); x.fillRect(M, y + 9, W - 2 * M, 1.5); y += 84;
+  // шапка
+  let y = 150;
+  x.fillStyle = ink; x.font = '700 26px "PT Serif"'; center(inst.ministry, y); y += 36;
+  x.fillStyle = soft; x.font = 'italic 400 25px "PT Serif"'; center(inst.center, y); y += 26;
+  x.fillStyle = ink; x.fillRect(M, y, W - 2 * M, 4); x.fillRect(M, y + 9, W - 2 * M, 1.5); y += 66;
+  x.font = '400 28px "PT Mono"'; x.fillStyle = soft;
+  x.fillText(`ЗАКЛЮЧЕНИЕ № ${number}`, M, y);
+  x.textAlign = 'right'; x.fillStyle = red; x.fillText(inst.glitchDate, W - M, y); x.textAlign = 'left';
+  if (name && name !== 'Неизвестно') { y += 40; x.fillStyle = soft; x.fillText(`Пациент: ${name}`.slice(0, 44), M, y); }
+  y += 92;
 
-  x.font = '700 54px "PT Serif"'; center('МЕДИЦИНСКОЕ ЗАКЛЮЧЕНИЕ', y); y += 64;
-  x.font = '400 30px "PT Mono"';
-  x.fillText('Дата: ', M, y);
-  const dx = M + x.measureText('Дата: ').width;
-  x.fillStyle = '#c4302b'; x.fillText(inst.glitchDate, dx, y); x.fillStyle = ink;
-  x.textAlign = 'right'; x.fillText(`№ ${number}`, W - M, y); x.textAlign = 'left'; y += 42;
-  x.fillText(inst.city, M, y); y += 62;
-
-  // ЭКГ-полоса: ровно → норма → срыв
-  x.strokeStyle = '#c4302b'; x.lineWidth = 3; x.lineJoin = 'round'; x.beginPath();
-  const ey = y; x.moveTo(M, ey);
+  // крючок + крупный диагноз
+  x.fillStyle = red; x.font = '700 40px "PT Mono"'; x.fillText('МНЕ ПОСТАВИЛИ ДИАГНОЗ:', M, y); y += 34;
+  // ЭКГ под крючком
+  x.strokeStyle = red; x.lineWidth = 3; x.lineJoin = 'round'; x.beginPath(); x.moveTo(M, y);
   for (let px = M; px <= W - M; px += 6) {
-    const k = (px - M) / (W - 2 * M);
-    let dy = 0;
-    if (k > .3 && k < .62) { const ph = ((k - .3) * 9) % 1; dy = ph > .45 && ph < .5 ? -44 : ph > .5 && ph < .55 ? 26 : 0; }
-    if (k >= .62) dy = (Math.random() - .5) * 100 * (k - .55) * 2.4;
-    x.lineTo(px, ey + dy);
+    const k = (px - M) / (W - 2 * M); let dy = 0;
+    if (k > .35 && k < .6) { const ph = ((k - .35) * 8) % 1; dy = ph > .45 && ph < .5 ? -26 : ph > .5 && ph < .55 ? 16 : 0; }
+    if (k >= .6) dy = (Math.random() - .5) * 60 * (k - .55) * 2.2;
+    x.lineTo(px, y + dy);
   }
-  x.stroke(); y += 92;
+  x.stroke(); y += 120;
+  x.fillStyle = ink;
+  // самый крупный кегль, при котором диагноз влезает в 2 строки и каждая строка — в ширину
+  let ds = 124, dl;
+  const fits = () => dl.length <= 2 && dl.every((l) => x.measureText(l).width <= W - 2 * M);
+  do { ds -= 4; x.font = `700 ${ds}px "PT Serif"`; dl = wrap(x, f.short.toUpperCase(), W - 2 * M); } while (!fits() && ds > 56);
+  dl.forEach((l) => { x.fillText(l, M - 4, y); y += ds + 8; });
+  y -= ds * .25;
+  x.font = '400 30px "PT Mono"'; x.fillStyle = soft; x.fillText(`код ${f.code} · ${CONTENT.artist}`, M, y); y += 86;
 
-  x.font = '400 32px "PT Serif"'; x.fillStyle = ink;
-  x.fillText('Ф.И.О. пациента: ', M, y);
-  const nx = M + x.measureText('Ф.И.О. пациента: ').width;
-  // длинное имя уменьшаем, чтобы влезло в строку
-  let ns = 32; do { x.font = `400 ${ns}px "PT Mono"`; ns -= 2; } while (x.measureText(name).width > W - M - nx && ns > 18);
-  x.fillStyle = name === 'Неизвестно' ? ink : '#2442a3'; x.fillText(name, nx, y); x.fillStyle = ink;
-  x.setLineDash([3, 6]); x.strokeStyle = '#8f887a'; x.lineWidth = 2; x.beginPath(); x.moveTo(nx, y + 10); x.lineTo(W - M, y + 10); x.stroke(); x.setLineDash([]);
-  y += 82;
-
-  // Диагноз (короткое название формы)
-  x.font = '700 30px "PT Serif"'; x.fillText('ДИАГНОЗ:', M, y); y += 70;
-  const dTop = y - 52;
-  x.font = '700 62px "PT Serif"';
-  wrap(x, f.short, W - 2 * M - 30).forEach((l) => { x.fillText(l, M + 30, y); y += 70; });
-  x.font = '400 30px "PT Mono"'; x.fillText(`Код: ${f.code}`, M + 30, y - 16); y += 10;
-  x.fillRect(M, dTop, 7, y - dTop - 10); y += 58;
-
-  // Клиническая картина (3 пункта)
-  x.font = '700 30px "PT Serif"'; x.fillText('Клиническая картина:', M, y); y += 46;
-  x.font = '400 30px "PT Serif"';
-  f.picture.slice(0, 3).forEach((p) => { wrap(x, '— ' + p, W - 2 * M).forEach((l) => { x.fillText(l, M, y); y += 42; }); });
-  y += 14;
-
-  // Назначение — в рамке
-  const boxTop = y;
-  y += 64;
-  x.font = 'italic 700 34px "PT Serif"'; x.fillText('Rp.  Назначение:', M + 34, y); y += 82;
-  x.fillStyle = '#2442a3';
-  let ts = 72, tl;
-  do { x.font = `700 ${ts}px "PT Serif"`; tl = wrap(x, `«${result.track.title}»`, W - 2 * M - 68); ts -= 6; } while (tl.length > 2 && ts > 44);
-  tl.forEach((l) => { x.fillText(l, M + 34, y); y += ts + 14; });
-  x.fillStyle = ink; x.font = '400 30px "PT Serif"'; y += 2;
-  x.fillText('с альбома «СДПН» — Сборник Для', M + 34, y); y += 42;
-  x.fillText('Психически Нестабильных', M + 34, y); y += 50;
-  x.font = '700 34px "PT Serif"'; x.fillText('Исполнитель: ' + CONTENT.artist, M + 34, y); y += 30;
-  x.strokeStyle = ink; x.lineWidth = 3; x.strokeRect(M, boxTop, W - 2 * M, y - boxTop);
-  y += 76;
-
-  // Подписи + печать поверх «М.П.»
-  x.fillStyle = ink; x.font = '400 30px "PT Serif"';
-  const sign = (label, who, d, yy) => {
-    x.fillText(label, M, yy);
-    const lx = M + x.measureText(label).width + 20, rx = W - M - x.measureText(who).width - 20;
-    x.fillRect(lx, yy + 6, rx - lx, 2);
-    x.textAlign = 'right'; x.fillText(who, W - M, yy); x.textAlign = 'left';
-    x.save(); x.translate(lx + 20, yy - 46); x.scale(2, 1.5); x.strokeStyle = '#2442a3'; x.lineWidth = 1.6; x.lineCap = 'round'; x.stroke(new Path2D(d)); x.restore();
+  // симптомы — галочками (то, в чём узнают себя)
+  x.fillStyle = ink; x.font = '700 32px "PT Serif"'; x.fillText('Симптомы:', M, y); y += 58;
+  const tick = (bx, by) => {
+    x.strokeStyle = ink; x.lineWidth = 3; x.strokeRect(bx, by - 30, 36, 36);
+    x.strokeStyle = blue; x.lineWidth = 6; x.lineCap = 'round'; x.beginPath();
+    x.moveTo(bx + 6, by - 12); x.lineTo(bx + 15, by - 2); x.lineTo(bx + 40, by - 40); x.stroke(); x.lineCap = 'butt';
   };
-  sign('Лечащий врач', inst.doctor, SIGN_GOROKH, y); y += 78;
-  sign('Заведующий отделением', inst.head, SIGN_MYAGKOV, y); y += 70;
-  x.font = '700 32px "PT Serif"'; x.fillText('М.П.', M, y);
-  drawStamp(x, M + 260, y - 70, 160, -0.24);
+  x.font = '400 36px "PT Serif"';
+  f.picture.slice(0, 3).forEach((p) => {
+    const t = p.replace(/[;.]\s*$/, ''); const s = t.charAt(0).toUpperCase() + t.slice(1);
+    tick(M, y);
+    wrap(x, s, W - 2 * M - 64).forEach((l, i) => { x.fillStyle = ink; x.fillText(l, M + 64, y + i * 44); y += i ? 44 : 0; });
+    y += 62;
+  });
+  y += 18;
 
-  // Подвал
-  x.font = 'italic 400 22px "PT Serif"'; x.fillStyle = '#8f887a';
-  wrap(x, CONTENT.ui.docFooter, W - 2 * M).forEach((l, k) => center(l, H - 108 + k * 30));
-  x.font = '400 24px "PT Mono"'; x.fillStyle = soft; center(`${CONTENT.artist} · альбом «СДПН»`, H - 44);
+  // назначение: сначала считаем строки, потом рисуем плашку нужной высоты
+  const boxTop = y;
+  let ts = 78, tl;
+  do { ts -= 4; x.font = `700 ${ts}px "PT Serif"`; tl = wrap(x, `«${result.track.title}»`, W - 2 * M - 300); } while ((tl.length > 2 || tl.some((l) => x.measureText(l).width > W - 2 * M - 80)) && ts > 44);
+  const boxH = 64 + 80 + tl.length * (ts + 12) + 56;
+  x.fillStyle = 'rgba(36,66,163,.07)'; x.fillRect(M, boxTop, W - 2 * M, boxH);
+  x.fillStyle = blue; x.fillRect(M, boxTop, 10, boxH);
+  y += 64;
+  x.fillStyle = ink; x.font = 'italic 700 34px "PT Serif"'; x.fillText('Rp.  Назначено:', M + 40, y); y += 80;
+  x.fillStyle = blue; x.font = `700 ${ts}px "PT Serif"`;
+  tl.forEach((l) => { x.fillText(l, M + 40, y); y += ts + 12; });
+  x.fillStyle = soft; x.font = '400 30px "PT Serif"'; x.fillText(`альбом «СДПН» — ${CONTENT.artist}`, M + 40, y + 8);
+  // печать — в правом нижнем углу назначения (текст трека переносится раньше, чтобы её не задеть)
+  drawStamp(x, W - M - 135, boxTop + boxH - 120, 135, -0.28);
+
+  // плашка-призыв
+  const bandTop = 1470, bandH = 250;
+  x.fillStyle = ink; x.fillRect(0, bandTop, W, bandH);
+  x.fillStyle = red; x.fillRect(0, bandTop, W, 8);
+  x.fillStyle = paper; x.font = '700 64px "PT Serif"'; center('А КАКОЙ ДИАГНОЗ У ТЕБЯ?', bandTop + 100);
+  x.font = '400 34px "PT Mono"'; x.fillStyle = '#e0d9c6'; center(`Пройди обследование → ${bot}`, bandTop + 160);
+  x.font = '400 25px "PT Mono"'; x.fillStyle = '#9b958a'; center('бесплатно · 2 минуты · 10 вопросов', bandTop + 208);
+
+  // подвал
+  x.font = 'italic 400 21px "PT Serif"'; x.fillStyle = '#8f887a';
+  wrap(x, CONTENT.ui.docFooter, W - 2 * M).forEach((l, k) => center(l, bandTop + bandH + 44 + k * 28));
   return c;
 }
 
@@ -2084,6 +2111,54 @@ async function shareStory() {
                      и отправить на локальный tools/save_server.py
    ?sim            — прогнать 20 000 случайных анкет и показать распределение
    ===================================================================== */
+/* Баннеры для сообщений бота (1280×640): «ПОСТАВЛЕН НА УЧЁТ», «ДЕНЬ 1…7», «КУРС ПРОЙДЕН».
+   ?export=bot на localhost → stories/bot-*.jpg (перегенерировать, если поменялись названия процедур). */
+async function drawBanner({ kicker, title, sub, sub2 }) {
+  await fontsReady();
+  const W = 1280, H = 640, M = 72;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  x.fillStyle = '#f5f0e3'; x.fillRect(0, 0, W, H);
+  for (let k = 0; k < 4000; k++) { x.fillStyle = `rgba(90,70,40,${Math.random() * .05})`; x.fillRect(Math.random() * W, Math.random() * H, 2, 2); }
+  const g = x.createRadialGradient(W / 2, H / 2, H * .3, W / 2, H / 2, W * .7); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(110,90,50,.16)');
+  x.fillStyle = g; x.fillRect(0, 0, W, H);
+  x.textBaseline = 'alphabetic';
+  x.fillStyle = '#1c1b18'; x.font = '700 22px "PT Serif"'; x.fillText(CONTENT.inst.ministry, M, 78);
+  x.fillRect(M, 94, 760, 3); x.fillRect(M, 101, 760, 1.2);
+  x.fillStyle = '#c4302b'; x.font = '700 30px "PT Mono"'; x.fillText(kicker, M, 168);
+  x.fillStyle = '#1c1b18';
+  let s = 150; do { s -= 6; x.font = `700 ${s}px "PT Serif"`; } while (x.measureText(title).width > 790 && s > 60);
+  x.fillText(title, M - 4, 168 + s + 8);
+  let y = 168 + s + 70;
+  if (sub) { x.fillStyle = '#2442a3'; x.font = '700 40px "PT Serif"'; wrap(x, sub, 800).slice(0, 2).forEach((l) => { x.fillText(l, M, y); y += 48; }); }
+  if (sub2) { x.fillStyle = '#5d584c'; x.font = '400 28px "PT Mono"'; x.fillText(sub2, M, y + 6); }
+  // ЭКГ внизу
+  x.strokeStyle = '#c4302b'; x.lineWidth = 3; x.lineJoin = 'round'; x.beginPath();
+  const ey = H - 70; x.moveTo(M, ey);
+  for (let px = M; px <= W - M; px += 6) { const k = (px - M) / (W - 2 * M); let dy = 0;
+    if (k > .3 && k < .6) { const ph = ((k - .3) * 7) % 1; dy = ph > .45 && ph < .5 ? -34 : ph > .5 && ph < .55 ? 20 : 0; }
+    if (k >= .6) dy = (Math.random() - .5) * 70 * (k - .55) * 2.2; x.lineTo(px, ey + dy); }
+  x.stroke();
+  x.fillStyle = '#5d584c'; x.font = '400 22px "PT Mono"'; x.fillText(`альбом «СДПН» · ${CONTENT.artist}`, M, H - 26);
+  drawStamp(x, W - 220, 290, 165, -0.22);
+  return c;
+}
+async function exportBot() {
+  const P = CONTENT.procedures, out = [];
+  const plan = [
+    { id: 'bot-uchet', kicker: 'РЕГИСТРАТУРА', title: 'НА УЧЁТЕ', sub: 'Процедурный лист выдан', sub2: 'Дежурный врач свяжется лично' },
+    ...P.map((p, i) => ({ id: `bot-day${i + 1}`, kicker: `ПРОЦЕДУРНЫЙ ЛИСТ · ${i + 1} ИЗ ${P.length}`, title: `ДЕНЬ ${i + 1}`, sub: `«${p.title}»`,
+      sub2: `до выхода «СДПН»: ${P.length - i} ${plural(P.length - i, 'день', 'дня', 'дней')}` })),
+    { id: 'bot-release', kicker: 'ЗАКЛЮЧЕНИЕ', title: 'КУРС ПРОЙДЕН', sub: '«СДПН» — на всех площадках', sub2: 'Препарат выдан' },
+  ];
+  for (const b of plan) {
+    const blob = await new Promise(async (r) => (await drawBanner(b)).toBlob(r, 'image/jpeg', 0.9));
+    const res = await fetch('/__save?name=' + b.id + '.jpg', { method: 'PUT', body: blob }).catch(() => null);
+    out.push(b.id + (res && res.ok ? ' ✓' : ' ✗'));
+  }
+  document.body.innerHTML = '<pre style="padding:20px;font:14px monospace">' + out.join('\n') + '</pre>';
+}
+
 async function exportStories() {
   const ids = Object.keys(CONTENT.tracks);
   const out = [];
@@ -2120,7 +2195,8 @@ document.querySelectorAll('[data-artist]').forEach((el) => { el.textContent = CO
   else if (wantsPreview) PREVIEW_OK = await checkAuthor();
   FRESH = PREVIEW_OK && QS.has('fresh');
   document.querySelectorAll('[data-glitch]').forEach(mountGlitch);
-  if (IS_LOCAL && QS.has('export')) exportStories();
+  if (IS_LOCAL && QS.get('export') === 'bot') exportBot();
+  else if (IS_LOCAL && QS.has('export')) exportStories();
   else if (IS_LOCAL && QS.has('sim')) { document.body.innerHTML = '<pre style="padding:20px;font:14px monospace">' + JSON.stringify(simulate(), null, 2) + '</pre>'; }
   else {
     renderStart();
