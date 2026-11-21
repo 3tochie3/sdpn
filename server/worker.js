@@ -112,13 +112,25 @@ async function register(req, env) {
 
   // подтверждение — только при первой постановке (или повторной после /stop)
   if (!existing || !existing.active) {
+    const c = courseState(env);
     await tg(env, 'sendMessage', {
       chat_id: user.id,
-      text: TEXT.registered({ card: card || '—', form: form || 'СДПН' }, courseState(env)),
-      reply_markup: { inline_keyboard: [[{ text: TEXT.openProc, web_app: { url: appUrl(env, 'proc') } }]] },
+      text: TEXT.registered({ card: card || '—', form: form || 'СДПН' }, c),
+      reply_markup: { inline_keyboard: await registeredButtons(env, c) },
     });
   }
   return json({ ok: true });
+}
+
+/* Кнопки под подтверждением постановки на учёт:
+   до курса — процедурный лист; во время курса — лист + «Предзаказ «СДПН»»; после релиза — «Слушать «СДПН»» + лист */
+async function registeredButtons(env, c) {
+  const proc = [{ text: TEXT.openProc, web_app: { url: appUrl(env, 'proc') } }];
+  if (c.phase !== 'course' && c.phase !== 'released') return [proc];
+  let site = { presave: '', album: '' };
+  try { site = await loadSite(env); } catch (e) {} // сайт недоступен — просто без ссылок
+  if (c.phase === 'course') return site.presave ? [proc, [{ text: 'Предзаказ «СДПН»', url: site.presave }]] : [proc];
+  return site.album ? [[{ text: '▶ Слушать «СДПН»', url: site.album }], proc] : [proc];
 }
 
 /* ---------- Новое обследование у пациента на учёте: дописать трек в его назначения ---------- */
