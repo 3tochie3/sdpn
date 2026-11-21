@@ -164,7 +164,7 @@ async function status(req, env) {
 }
 
 /* ---------- Сниппеты процедурного листа ----------
-   Файл (ключ dayN в KV) отдаётся, только когда наступил его день:
+   Файл (ключ dayN в KV) отдаётся только пациентам, вставшим на учёт, и только когда наступил его день:
    день N открывается за (8 − N) суток до RELEASE_DATE — так же, как в приложении.
    Авторы (Telegram ID в секрете ADMIN_IDS через запятую) получают любой файл в любое время — для /preview. */
 const DAY_MS = 864e5;
@@ -174,14 +174,19 @@ async function teaser(req, env) {
   if (!key) return json({ error: 'bad key' }, 400);
   const day = parseInt(key[1], 10);
 
-  let allowed = false;
-  const release = env.RELEASE_DATE ? Date.parse(env.RELEASE_DATE) : NaN;
-  if (!isNaN(release) && Date.now() >= release - (8 - day) * DAY_MS) allowed = true;
-  if (!allowed && body.initData) {
-    const data = await verifyInitData(body.initData, env.BOT_TOKEN);
-    const id = data && JSON.parse(data.get('user') || '{}').id;
-    const admins = clean(env.ADMIN_IDS).split(',').filter(Boolean);
-    if (id && admins.includes(String(id))) allowed = true;
+  // кто спрашивает: только подписанный Telegram-пользователь
+  const data = body.initData ? await verifyInitData(body.initData, env.BOT_TOKEN) : null;
+  const id = data && JSON.parse(data.get('user') || '{}').id;
+  if (!id) return json({ error: 'locked' }, 403);
+
+  const admins = clean(env.ADMIN_IDS).split(',').filter(Boolean);
+  let allowed = admins.includes(String(id)); // авторы — всегда (для /preview)
+  if (!allowed) {
+    // остальные — только вставшие на учёт и только когда наступил день процедуры
+    const release = env.RELEASE_DATE ? Date.parse(env.RELEASE_DATE) : NaN;
+    const dayReached = !isNaN(release) && Date.now() >= release - (8 - day) * DAY_MS;
+    const row = dayReached ? await env.DB.prepare('SELECT active FROM patients WHERE id = ?').bind(id).first() : null;
+    allowed = !!(row && row.active);
   }
   if (!allowed) return json({ error: 'locked' }, 403);
 

@@ -279,7 +279,22 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .glitch .g.fix { color: var(--blue); }
 
 /* Процедурный лист */
-.proc { margin-top: 14px; }
+/* Вкладки медкарты — как картонные закладки над листом */
+.tabs { display: flex; gap: 4px; margin: 0 6px -1px; position: relative; z-index: 1; }
+.tab { flex: 1; padding: 10px 8px 9px; border: 1px solid transparent; border-bottom: 0; border-radius: 8px 8px 0 0;
+  background: color-mix(in srgb, var(--paper) 18%, transparent); color: var(--bg-hint);
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.tab.active { background: var(--paper); color: var(--ink); }
+.tab .tab-lock { font-size: 8px; color: var(--red); }
+.tab .tab-lock.off { display: none; }
+.has-tabs #s-start > .sheet:first-child, .has-tabs #s-proc > .sheet { border-top-left-radius: 0; border-top-right-radius: 0; }
+/* Закрытый процедурный лист */
+.proc-gate { text-align: center; padding: 6px 4px 16px; }
+.proc-gate .g-stamp { display: inline-block; border: 2px solid var(--red); color: var(--red); font-family: var(--mono); font-size: 12px; letter-spacing: .2em; padding: 4px 10px; transform: rotate(-4deg); margin: 6px 0 12px; }
+.proc-gate .g-text { font-size: 15px; line-height: 1.5; margin: 0 0 14px; }
+.proc-gate .btn { max-width: 320px; margin: 0 auto; }
+.proc.gated .p-row { opacity: .55; }
+.proc { margin-top: 0; }
 .proc h2 { font-family: var(--serif); font-size: 18px; margin: 0; letter-spacing: .04em; }
 .proc .p-sub { font-style: italic; font-size: 13px; color: var(--ink-soft); margin: 4px 0 12px; }
 .p-row { border-top: 1px dashed var(--rule); }
@@ -360,6 +375,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
 <body>
 <div class="app" id="app">
 
+  <!-- Вкладки медкарты: только в предрелизный период (на регистратуре и в процедурном листе) -->
+  <nav class="tabs" id="tabs" hidden>
+    <button class="tab" data-tab="s-start" data-t="prerelease.tabStart"></button>
+    <button class="tab" data-tab="s-proc"><span data-t="prerelease.tabProc"></span><span class="tab-lock" id="tab-lock">●</span></button>
+  </nav>
+
   <!-- ================= 1. РЕГИСТРАТУРА ================= -->
   <section class="screen active" id="s-start">
     <div class="sheet">
@@ -384,8 +405,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
       <div class="doctor-line"><span data-t="ui.cabinet"></span><span>Дата: <span class="glitch" data-glitch></span></span></div>
       <div class="actions"><button class="btn btn-primary mb-dup" id="btn-start" data-t="ui.startBtn"></button></div>
     </div>
-    <!-- Процедурный лист: только в предрелизный период -->
-    <div class="sheet proc" id="proc" hidden></div>
+    <p class="disclaimer" data-t="ui.disclaimer"></p>
+  </section>
+
+  <!-- ================= ПРОЦЕДУРНЫЙ ЛИСТ (вкладка) ================= -->
+  <section class="screen" id="s-proc">
+    <div class="sheet proc" id="proc"></div>
     <p class="disclaimer" data-t="ui.disclaimer"></p>
   </section>
 
@@ -506,6 +531,13 @@ const CONTENT = {
     regOnlyTg: 'Встать на учёт можно, открыв обследование в Telegram.',
     procTitle: 'Процедурный лист',
     procSub: 'Курс подготовки к приёму препарата. Процедуры открываются ежедневно, по одной.',
+    tabStart: 'Регистратура',
+    tabProc: 'Процедурный лист',
+    gateStamp: 'НЕ ВЫДАН',
+    gateText: 'Чтобы получить процедурный лист, необходимо пройти обследование и встать на учёт.',
+    gateBtn: 'Пройти обследование',
+    gateTg: 'Процедурный лист выдаётся только в Telegram — откройте обследование через бота.',
+    openProcBtn: 'Открыть процедурный лист',
     procDay: (d) => `День ${d}`,
     procLocked: (d) => d === 1 ? 'откроется завтра' : `откроется через ${d} ${plural(d, 'день', 'дня', 'дней')}`,
     procDone: 'выполнено',
@@ -1015,8 +1047,25 @@ function mountGlitch(el) {
 /* ---------- Экраны ---------- */
 function show(id) {
   document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('active', s.id === id));
+  // вкладки «Регистратура / Процедурный лист» — только в предрелизный период и только на этих двух экранах
+  const tabsOn = releaseInfo().phase === 'prerelease' && (id === 's-start' || id === 's-proc');
+  $('#tabs').hidden = !tabsOn;
+  document.body.classList.toggle('has-tabs', tabsOn);
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === id));
+  $('#tab-lock').classList.toggle('off', isRegistered());
   window.scrollTo(0, 0);
 }
+/* Переключение вкладок */
+function openTab(id) {
+  haptic.tap();
+  if (id === 's-start') { renderStart(); return; }
+  renderProcedures();
+  show('s-proc');
+  setBack(null);
+  // закрытый лист: главная кнопка ведёт на обследование; открытый — кнопка не нужна
+  if (!isRegistered()) setMain(CONTENT.prerelease.gateBtn.toUpperCase(), startQuiz); else setMain(null);
+}
+$('#tabs').addEventListener('click', (e) => { const t = e.target.closest('.tab'); if (t) openTab(t.dataset.tab); });
 
 function instHTML() {
   const i = CONTENT.inst;
@@ -1031,10 +1080,10 @@ function renderStart() {
     `<div><span class="n">${i + 1}.</span><span>${esc(d[0])}<em>— ${esc(d[1])}</em></span></div>`).join('');
   $('#call').innerHTML = `<b>${esc(CONTENT.ui.callTitle)}</b>${esc(CONTENT.ui.callText)}`;
   renderNotice();
-  renderProcedures();
   show('s-start');
   setBack(null);
   setMain(CONTENT.ui.startBtn.toUpperCase(), startQuiz);
+  syncRegStatus(); // узнать у сервера, стоит ли человек на учёте (для вкладки «Процедурный лист»)
 }
 
 /* ---------- Объявление с обратным отсчётом ---------- */
@@ -1089,6 +1138,19 @@ function renderProcedures() {
   box.hidden = false;
   const n = list.length;
   const opened = Math.max(0, Math.min(n, n + 1 - r.daysLeft)); // сколько дней уже открыто
+
+  // Лист выдаётся только вставшим на учёт: до этого — «НЕ ВЫДАН» и вымаранные строки
+  const gated = !isRegistered();
+  box.classList.toggle('gated', gated);
+  if (gated) {
+    box.innerHTML = `<h2>${esc(P.procTitle)}</h2>
+      <div class="proc-gate"><div class="g-stamp">${esc(P.gateStamp)}</div>
+        <p class="g-text">${esc(IN_TG || !CONTENT.api ? P.gateText : P.gateTg)}</p>
+        <button class="btn btn-primary mb-dup" id="btn-gate">${esc(P.gateBtn)}</button></div>` +
+      list.map((p, i) => `<div class="p-row locked"><div class="p-head"><span class="d">${esc(P.procDay(i + 1))}</span><span class="t redacted"></span><span class="s"></span></div></div>`).join('');
+    $('#btn-gate').addEventListener('click', startQuiz);
+    return;
+  }
   const body = (p, i) => {
     let h = '';
     if (p.kind === 'quote') h += `<blockquote>«${esc(p.text)}»</blockquote>${p.caption ? `<div class="cap">${esc(p.caption)}</div>` : ''}`;
@@ -1531,8 +1593,14 @@ async function syncRegStatus() {
     });
     if (!r.ok) return;
     const { active } = await r.json();
-    if (active !== isRegistered()) { setRegistered(active); renderRegCard(); }
+    if (active !== isRegistered()) { setRegistered(active); refreshRegViews(); }
   } catch (e) {}
+}
+/* Статус учёта поменялся — перерисовать то, что от него зависит */
+function refreshRegViews() {
+  $('#tab-lock').classList.toggle('off', isRegistered());
+  if ($('#s-result').classList.contains('active')) renderRegCard();
+  if ($('#s-proc').classList.contains('active')) openTab('s-proc');
 }
 function renderRegCard() {
   const box = $('#reg-card'), P = CONTENT.prerelease;
@@ -1540,11 +1608,13 @@ function renderRegCard() {
   box.hidden = false;
   syncRegStatus();
   box.innerHTML = `<div class="r-title">${esc(P.regTitle)}</div><div class="r-text">${esc(P.regText)}</div>` +
-    (isRegistered() ? `<div class="r-done">✓ ${esc(P.regDone)}</div>`
+    (isRegistered() ? `<div class="r-done">✓ ${esc(P.regDone)}</div><button class="btn btn-primary" id="btn-open-proc">${esc(P.openProcBtn)}</button>`
       : `<div class="r-next" id="r-next" hidden></div><button class="btn btn-primary" id="btn-reg">${esc(P.regBtn)}</button>`) +
     `<div class="r-priv">${esc(P.regPrivacy)}</div>`;
   const b = $('#btn-reg');
   if (b) b.addEventListener('click', register);
+  const op = $('#btn-open-proc');
+  if (op) op.addEventListener('click', () => openTab('s-proc'));
   // «Вы станете пациентом № N+1» — когда на учёте уже не меньше statsMin
   if (!isRegistered()) getPatients().then((n) => {
     const el = $('#r-next');
@@ -1573,7 +1643,7 @@ async function register() {
     if (!res.ok) throw new Error(res.status);
     setRegistered(true);
     haptic.ok();
-    renderRegCard();
+    refreshRegViews();
   } catch (e) {
     b.disabled = false; b.style.opacity = '';
     alertMsg(P.regError);
