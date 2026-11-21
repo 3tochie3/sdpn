@@ -138,6 +138,7 @@ async function webhook(req, env) {
     // скрытая команда автора: открыть приложение в предрелизном режиме (v= — чтобы Telegram не открыл старую копию)
     const v = Date.now();
     const preview = { reply_markup: { inline_keyboard: [
+      [{ text: 'Первый день предзаказа · новый пользователь', web_app: { url: `${env.MINIAPP_URL}?days=7&fresh=1&v=${v}` } }],
       [{ text: 'Накануне релиза (открыты все 7 дней)', web_app: { url: `${env.MINIAPP_URL}?days=1&v=${v}` } }],
       [{ text: 'За 5 дней до релиза', web_app: { url: `${env.MINIAPP_URL}?days=5&v=${v}` } }],
     ] } };

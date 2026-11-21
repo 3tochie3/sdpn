@@ -1142,6 +1142,7 @@ function storeSet(key, value) {
   });
 }
 async function loadHistory() {
+  if (FRESH) { historyCache = []; updateHistCount(); return historyCache; } // новый пользователь — карта пуста
   try { const v = await storeGet(HIST_KEY); historyCache = v ? JSON.parse(v) : []; } catch (e) { historyCache = []; }
   if (!Array.isArray(historyCache)) historyCache = [];
   updateHistCount();
@@ -1152,6 +1153,7 @@ async function saveToHistory(result, card) {
   const rec = { c: card, d: Date.now(), f: result.form.code, t: result.trackId, s: CONTENT.scaleOrder.map((k) => Math.round(result.norm[k] * 100)) };
   historyCache = [...historyCache, rec].slice(-CONTENT.history.max);
   updateHistCount();
+  if (FRESH) return; // в предпросмотре настоящую историю не трогаем
   await storeSet(HIST_KEY, JSON.stringify(historyCache));
 }
 /* Восстановить полный результат из краткой записи (для «Открыть заключение») */
@@ -1720,11 +1722,15 @@ function acceptRx() {
 /* Локальная отметка «я на учёте» — только чтобы карточка сразу нарисовалась правильно.
    Источник правды — сервер: после /stop в чате с ботом отметка сбрасывается сверкой (syncRegStatus). */
 const REG_KEY = 'sdpn_registered';
-const isRegistered = () => { try { return localStorage.getItem(REG_KEY) === '1'; } catch (e) { return false; } };
-const setRegistered = (v) => { try { v ? localStorage.setItem(REG_KEY, '1') : localStorage.removeItem(REG_KEY); } catch (e) {} };
+/* ?fresh — предпросмотр «глазами нового пользователя»: не на учёте, история пустая,
+   ничего из настоящей карты не читается и не перезаписывается (кроме реальной постановки на учёт кнопкой). */
+const FRESH = QS.has('fresh');
+let freshRegistered = false;
+const isRegistered = () => { if (FRESH) return freshRegistered; try { return localStorage.getItem(REG_KEY) === '1'; } catch (e) { return false; } };
+const setRegistered = (v) => { if (FRESH) { freshRegistered = !!v; return; } try { v ? localStorage.setItem(REG_KEY, '1') : localStorage.removeItem(REG_KEY); } catch (e) {} };
 let regSynced = false;
 async function syncRegStatus() {
-  if (regSynced || !IN_TG || !CONTENT.api) return;
+  if (regSynced || FRESH || !IN_TG || !CONTENT.api) return;
   regSynced = true;
   try {
     const r = await fetch(CONTENT.api.replace(/\/$/, '') + '/status', {
