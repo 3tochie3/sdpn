@@ -49,6 +49,7 @@ export default {
     try {
       if (url.pathname === '/register' && req.method === 'POST') return withCors(await register(req, env), cors);
       if (url.pathname === '/stats' && req.method === 'GET') return withCors(await stats(env), cors);
+      if (url.pathname === '/status' && req.method === 'POST') return withCors(await status(req, env), cors);
       if (url.pathname === '/webhook' && req.method === 'POST') return await webhook(req, env);
       if (url.pathname.startsWith('/admin/')) {
         if (req.headers.get('X-Admin-Key') !== env.ADMIN_KEY || !env.ADMIN_KEY) return json({ error: 'forbidden' }, 403);
@@ -145,6 +146,16 @@ async function webhook(req, env) {
     await tg(env, 'sendMessage', { chat_id: msg.chat.id, text: TEXT.other, ...appBtn });
   }
   return new Response('ok');
+}
+
+/* ---------- Стоит ли пациент на учёте (чтобы приложение не верило старой памяти после /stop) ---------- */
+async function status(req, env) {
+  const body = JSON.parse(await req.text());
+  const data = await verifyInitData(body.initData || '', env.BOT_TOKEN);
+  if (!data) return json({ error: 'bad signature' }, 401);
+  const user = JSON.parse(data.get('user') || '{}');
+  const row = user.id ? await env.DB.prepare('SELECT active FROM patients WHERE id = ?').bind(user.id).first() : null;
+  return json({ active: !!(row && row.active) });
 }
 
 /* ---------- Статистика ---------- */

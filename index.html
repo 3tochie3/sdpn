@@ -305,6 +305,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .reg-card .r-title { font-weight: 700; font-size: 16px; }
 .reg-card .r-text { font-size: 14px; line-height: 1.45; margin: 4px 0 10px; }
 .reg-card .r-priv { font-size: 11.5px; color: var(--ink-faint); font-style: italic; margin-top: 8px; line-height: 1.4; }
+.reg-card .r-next { font-family: var(--mono); font-size: 12.5px; color: var(--blue); margin: -2px 0 10px; }
 .reg-card .r-done { font-family: var(--mono); font-size: 13px; color: var(--blue); padding: 6px 0 2px; }
 .reg-card .btn { min-height: 46px; }
 .reg-card .btn-primary { background: var(--ink); color: var(--paper); }
@@ -469,6 +470,8 @@ const CONTENT = {
     releasedTitle: 'Препарат «СДПН» поступил в аптеки.',
     releasedText: 'Пройдите обследование, чтобы получить назначение.',
     onRecord: (n) => `На учёте: ${n} ${plural(n, 'пациент', 'пациента', 'пациентов')}`,
+    statsMin: 20,           // счётчик показывается, только когда на учёте не меньше стольких человек
+    regNext: (n) => `Вы станете пациентом № ${n} в очереди на получение препарата.`,
     presaveBtn: 'Оформить предзаказ',
     noPresave: 'Предзаказ откроется в ближайшее время. Следите за каналом.',
     status: 'Статус назначения: препарат ожидает поступления в аптеки.',
@@ -1040,15 +1043,20 @@ function renderNotice() {
   noticeTimer = setInterval(tick, 1000);
   loadStats();
 }
-/* «На учёте: N пациентов» — с сервера, если он подключён */
+/* Число пациентов на учёте — с сервера, один запрос на открытие приложения.
+   Показывается в объявлении («На учёте: N») и в карточке постановки («Вы станете пациентом № N+1»),
+   но только начиная с CONTENT.prerelease.statsMin. */
+let statsPromise = null;
+function getPatients() {
+  if (!CONTENT.api) return Promise.resolve(0);
+  if (!statsPromise) statsPromise = fetch(CONTENT.api.replace(/\/$/, '') + '/stats')
+    .then((r) => r.json()).then((d) => d.patients || 0).catch(() => 0);
+  return statsPromise;
+}
 async function loadStats() {
-  if (!CONTENT.api) return;
-  try {
-    const r = await fetch(CONTENT.api.replace(/\/$/, '') + '/stats');
-    const { patients } = await r.json();
-    const el = $('#n-rec');
-    if (el && patients > 0) { el.textContent = CONTENT.prerelease.onRecord(patients); el.hidden = false; }
-  } catch (e) {}
+  const n = await getPatients();
+  const el = $('#n-rec');
+  if (el && n >= CONTENT.prerelease.statsMin) { el.textContent = CONTENT.prerelease.onRecord(n); el.hidden = false; }
 }
 
 /* ---------- Процедурный лист ---------- */
@@ -1391,18 +1399,40 @@ function acceptRx() {
    2) initData (подписан Telegram) + назначенный трек уходят на сервер (server/worker.js)
    3) сервер проверяет подпись, сохраняет ID и сразу присылает подтверждение в чат
    ===================================================================== */
+/* Локальная отметка «я на учёте» — только чтобы карточка сразу нарисовалась правильно.
+   Источник правды — сервер: после /stop в чате с ботом отметка сбрасывается сверкой (syncRegStatus). */
 const REG_KEY = 'sdpn_registered';
 const isRegistered = () => { try { return localStorage.getItem(REG_KEY) === '1'; } catch (e) { return false; } };
+const setRegistered = (v) => { try { v ? localStorage.setItem(REG_KEY, '1') : localStorage.removeItem(REG_KEY); } catch (e) {} };
+let regSynced = false;
+async function syncRegStatus() {
+  if (regSynced || !IN_TG || !CONTENT.api) return;
+  regSynced = true;
+  try {
+    const r = await fetch(CONTENT.api.replace(/\/$/, '') + '/status', {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ initData: tg.initData }),
+    });
+    if (!r.ok) return;
+    const { active } = await r.json();
+    if (active !== isRegistered()) { setRegistered(active); renderRegCard(); }
+  } catch (e) {}
+}
 function renderRegCard() {
   const box = $('#reg-card'), P = CONTENT.prerelease;
   if (releaseInfo().phase !== 'prerelease' || !CONTENT.api) { box.hidden = true; return; }
   box.hidden = false;
+  syncRegStatus();
   box.innerHTML = `<div class="r-title">${esc(P.regTitle)}</div><div class="r-text">${esc(P.regText)}</div>` +
     (isRegistered() ? `<div class="r-done">✓ ${esc(P.regDone)}</div>`
-      : `<button class="btn btn-primary" id="btn-reg">${esc(P.regBtn)}</button>`) +
+      : `<div class="r-next" id="r-next" hidden></div><button class="btn btn-primary" id="btn-reg">${esc(P.regBtn)}</button>`) +
     `<div class="r-priv">${esc(P.regPrivacy)}</div>`;
   const b = $('#btn-reg');
   if (b) b.addEventListener('click', register);
+  // «Вы станете пациентом № N+1» — когда на учёте уже не меньше statsMin
+  if (!isRegistered()) getPatients().then((n) => {
+    const el = $('#r-next');
+    if (el && n >= P.statsMin) { el.textContent = P.regNext(n + 1); el.hidden = false; }
+  });
 }
 function askWriteAccess() {
   return new Promise((resolve) => {
@@ -1424,7 +1454,7 @@ async function register() {
       body: JSON.stringify({ initData: tg.initData, track: state.result.trackId, form: state.result.form.code, card: state.number }),
     });
     if (!res.ok) throw new Error(res.status);
-    try { localStorage.setItem(REG_KEY, '1'); } catch (e) {}
+    setRegistered(true);
     haptic.ok();
     renderRegCard();
   } catch (e) {
