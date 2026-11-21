@@ -262,6 +262,55 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .fineprint { font-size: 11.5px; color: var(--ink-faint); font-style: italic; margin-top: 64px; text-align: center; line-height: 1.4; }
 
+/* =========================================================
+   ПРЕДРЕЛИЗНЫЙ РЕЖИМ
+   ========================================================= */
+[hidden] { display: none !important; }
+/* Объявление с отсчётом */
+.notice { margin: 18px 0 0; padding: 12px 14px 14px; border: 1.5px dashed var(--red); position: relative; text-align: center; }
+.notice .n-label { position: absolute; top: -9px; left: 50%; transform: translateX(-50%); background: var(--paper); padding: 0 8px; font-family: var(--mono); font-size: 11px; letter-spacing: .2em; color: var(--red); }
+.notice .n-title { font-weight: 700; font-size: 15.5px; line-height: 1.35; }
+.notice .n-sub { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); margin-top: 8px; }
+.notice .n-count { font-family: var(--mono); font-size: 26px; letter-spacing: .04em; margin-top: 2px; color: var(--red); font-variant-numeric: tabular-nums; }
+.notice .n-count small { font-size: 12px; color: var(--ink-soft); margin: 0 6px 0 2px; letter-spacing: 0; }
+.notice .n-rec { font-family: var(--mono); font-size: 11.5px; color: var(--blue); margin-top: 8px; }
+.notice.released { border-color: var(--blue); }
+.notice.released .n-label { color: var(--blue); }
+.glitch .g.fix { color: var(--blue); }
+
+/* Процедурный лист */
+.proc { margin-top: 14px; }
+.proc h2 { font-family: var(--serif); font-size: 18px; margin: 0; letter-spacing: .04em; }
+.proc .p-sub { font-style: italic; font-size: 13px; color: var(--ink-soft); margin: 4px 0 12px; }
+.p-row { border-top: 1px dashed var(--rule); }
+.p-row:last-child { border-bottom: 1px dashed var(--rule); }
+.p-head { display: grid; grid-template-columns: 58px 1fr auto; gap: 8px; align-items: baseline; width: 100%; padding: 11px 0; background: none; border: 0; text-align: left; font-family: var(--serif); color: var(--ink); }
+.p-head .d { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); }
+.p-head .t { font-size: 15px; font-weight: 700; }
+.p-head .s { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); white-space: nowrap; }
+.p-row.open .p-head .s { color: var(--blue); }
+.p-row.locked .p-head { cursor: default; }
+.p-head .t.redacted { display: block; height: 11px; width: 78%; background: var(--ink); opacity: .78; transform: translateY(1px); } /* «вымарано» */
+.p-row.today .p-head .d { color: var(--red); }
+.p-body { padding: 0 0 14px 66px; font-size: 14.5px; line-height: 1.5; display: none; }
+.p-row.expanded .p-body { display: block; }
+.p-body blockquote { margin: 4px 0; padding-left: 10px; border-left: 3px solid var(--blue); font-style: italic; font-size: 16px; }
+.p-body .cap { font-size: 12.5px; color: var(--ink-soft); }
+.p-body audio { width: 100%; margin-top: 8px; }
+.p-body img { width: 100%; margin-top: 8px; border: 1px solid var(--rule); filter: grayscale(1) contrast(1.15); }
+.p-body ol { margin: 6px 0 0; padding-left: 1.4em; font-family: var(--mono); font-size: 13px; }
+
+/* Постановка на учёт */
+.reg-card { background: var(--paper); color: var(--ink); border-radius: 3px; padding: 14px 14px 12px; font-family: var(--serif); border-left: 4px solid var(--blue); }
+.reg-card .r-title { font-weight: 700; font-size: 16px; }
+.reg-card .r-text { font-size: 14px; line-height: 1.45; margin: 4px 0 10px; }
+.reg-card .r-priv { font-size: 11.5px; color: var(--ink-faint); font-style: italic; margin-top: 8px; line-height: 1.4; }
+.reg-card .r-done { font-family: var(--mono); font-size: 13px; color: var(--blue); padding: 6px 0 2px; }
+.reg-card .btn { min-height: 46px; }
+.reg-card .btn-primary { background: var(--ink); color: var(--paper); }
+.rx .status { font-family: var(--mono); font-size: 12.5px; color: var(--red); margin-top: 10px; }
+.rx .status.ok { color: var(--blue); }
+
 /* ---------- Оверлей сохранения ---------- */
 .overlay {
   position: fixed; inset: 0; z-index: 50; background: rgba(12,12,14,.97);
@@ -304,6 +353,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
       </div>
       <div class="byline"><span class="byline-k" data-t="ui.albumBy"></span><span class="byline-v" data-artist></span></div>
       <div class="decode" id="decode"></div>
+      <div class="notice" id="notice" hidden></div>
       <div class="call" id="call"></div>
       <label class="name-field" for="name-input">
         <span class="name-label" data-t="ui.nameLabel"></span>
@@ -313,6 +363,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
       <div class="doctor-line"><span data-t="ui.cabinet"></span><span>Дата: <span class="glitch" data-glitch></span></span></div>
       <div class="actions"><button class="btn btn-primary mb-dup" id="btn-start" data-t="ui.startBtn"></button></div>
     </div>
+    <!-- Процедурный лист: только в предрелизный период -->
+    <div class="sheet proc" id="proc" hidden></div>
     <p class="disclaimer" data-t="ui.disclaimer"></p>
   </section>
 
@@ -345,6 +397,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
     <div class="sheet doc" id="doc"></div>
     <div class="actions">
       <button class="btn btn-ink mb-dup" id="btn-rx" data-t="ui.acceptBtn"></button>
+      <!-- Постановка на учёт: только в предрелизный период и если указан сервер -->
+      <div class="reg-card" id="reg-card" hidden></div>
       <div class="btn-row">
         <button class="btn btn-primary" id="btn-story" data-t="ui.storyBtn"></button>
         <button class="btn btn-primary" id="btn-save" data-t="ui.saveBtn"></button>
@@ -386,6 +440,78 @@ const CONTENT = {
   },
 
   artist: 'ТРОЕТОЧИЕ',
+
+  /* ---------- РЕЛИЗ И ПРЕДРЕЛИЗНЫЙ РЕЖИМ ----------
+     Пока date пустая — приложение работает как обычно.
+     Как только вписана дата, до неё включается предрелизный режим:
+       • отсчёт «до поступления препарата в аптеки» на старте;
+       • глитч-дата каждый день «стабилизируется» и к релизу становится настоящей датой;
+       • процедурный лист на 7 дней (открывается по дню);
+       • вместо «Принять назначение» — «Оформить предзаказ» (ссылка на пресейв);
+       • кнопка «Встать на учёт» (личное сообщение от бота в день релиза; нужен сервер, см. server/README.md).
+     В момент релиза всё само переключается обратно, а печать становится «ПРЕПАРАТ ВЫДАН».
+     Проверить без даты: добавьте к адресу ?days=5 (за 5 дней до релиза) или ?days=0 (релиз уже был). */
+  release: {
+    date: '',               // дата и время выхода, например '2027-02-13T00:00:00+10:00' (+10 — Владивосток)
+    presaveUrl: '',         // ссылка на пресейв (Band.link / ONErpm / BandLink и т.п.)
+    albumUrl: '',           // ссылка на альбом целиком — после релиза, если у трека нет своей ссылки
+    tz: 'Asia/Vladivostok', // часовой пояс для показа даты
+  },
+
+  /* Адрес сервера рассылки (Cloudflare Worker), например 'https://sdpn-registry.<имя>.workers.dev'.
+     Пусто — кнопки «Встать на учёт» нет. */
+  api: '',
+
+  prerelease: {
+    noticeLabel: 'ОБЪЯВЛЕНИЕ',
+    noticeTitle: 'Препарат «СДПН» проходит последние испытания.',
+    noticeCountdown: 'Поступление в аптеки через',
+    releasedTitle: 'Препарат «СДПН» поступил в аптеки.',
+    releasedText: 'Пройдите обследование, чтобы получить назначение.',
+    onRecord: (n) => `На учёте: ${n} ${plural(n, 'пациент', 'пациента', 'пациентов')}`,
+    presaveBtn: 'Оформить предзаказ',
+    noPresave: 'Предзаказ откроется в ближайшее время. Следите за каналом.',
+    status: 'Статус назначения: препарат ожидает поступления в аптеки.',
+    statusReleased: 'Статус назначения: препарат выдан.',
+    regTitle: 'Постановка на учёт',
+    regText: 'Дежурный врач лично сообщит вам о поступлении препарата и пришлёт назначение в день релиза.',
+    regBtn: 'Встать на учёт',
+    regPrivacy: 'Сохраняется только ваш Telegram ID и номер назначенного трека. Снять с учёта — команда /stop в чате с ботом.',
+    regDone: 'Вы поставлены на учёт. Ожидайте сообщения от дежурного врача.',
+    regDenied: 'Без разрешения писать вам дежурный врач не сможет сообщить о поступлении препарата.',
+    regError: 'Регистратура перегружена. Попробуйте ещё раз чуть позже.',
+    regOnlyTg: 'Встать на учёт можно, открыв обследование в Telegram.',
+    procTitle: 'Процедурный лист',
+    procSub: 'Курс подготовки к приёму препарата. Процедуры открываются ежедневно, по одной.',
+    procDay: (d) => `День ${d}`,
+    procLocked: (d) => d === 1 ? 'откроется завтра' : `откроется через ${d} ${plural(d, 'день', 'дня', 'дней')}`,
+    procDone: 'выполнено',
+    stampReleased: ['ПРЕПАРАТ', 'ВЫДАН'],
+  },
+
+  /* ---------- Процедурный лист (7 дней до релиза) ----------
+     День 1 открывается за 7 дней до релиза, день 7 — накануне.
+     kind: 'text' — просто текст; 'quote' — цитата (строки из трека);
+           'audio' — сниппет: положите mp3 в папку teasers/ и впишите src: 'teasers/day3.mp3';
+           'image' — картинка (обложка и т.п.): src: 'teasers/cover.jpg';
+           'tracklist' — «состав препарата»: берётся из списка треков ниже.
+     Если у audio/image пустой src — показывается только текст. */
+  procedures: [
+    { title: 'Регистрация пациента', kind: 'text',
+      text: 'Медицинская карта заведена. Пациент поставлен в очередь на получение препарата. Ежедневные процедуры обязательны.' },
+    { title: 'Выписка из истории болезни', kind: 'quote',
+      text: 'Всё нормально, и это пугает.', caption: 'Со слов пациента.' },
+    { title: 'Пробная доза', kind: 'audio', src: '',
+      text: 'Первые секунды препарата. Принимать через наушники, в тишине.' },
+    { title: 'Рентгенограмма', kind: 'image', src: '',
+      text: 'Снимок препарата. Изображение проявляется не сразу.' },
+    { title: 'Состав препарата', kind: 'tracklist',
+      text: 'Действующие вещества, в порядке приёма:' },
+    { title: 'Повторная пробная доза', kind: 'audio', src: '',
+      text: 'Доза увеличена. Громкость — по самочувствию.' },
+    { title: 'Подготовка к приёму', kind: 'text',
+      text: 'Зарядите наушники. Освободите ночь. Предупредите близких, что всё будет не нормально.' },
+  ],
 
   /* ---------- Учреждение ---------- */
   inst: {
@@ -790,17 +916,60 @@ nameInput.addEventListener('input', () => { state.name = nameInput.value; });
 nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { nameInput.blur(); startQuiz(); } });
 
 function newNumber() { return 'СДПН-' + String(2 + Math.floor(Math.random() * 998)).padStart(3, '0'); }
+function plural(n, one, few, many) {
+  const a = Math.abs(n) % 100, b = a % 10;
+  return a > 10 && a < 20 ? many : b === 1 ? one : b >= 2 && b <= 4 ? few : many;
+}
+
+/* =====================================================================
+   РЕЛИЗ: фазы 'none' (дата не задана) → 'prerelease' → 'released'
+   ===================================================================== */
+const QS = new URLSearchParams(location.search);
+const DAY = 864e5;
+function releaseDate() {
+  // ?days=N — предпросмотр: «релиз через N дней» (0 — уже вышел)
+  if (QS.has('days')) { const d = parseFloat(QS.get('days')) || 0; return new Date(PAGE_T0 + (d > 0 ? d * DAY - 6e4 : -36e5)); }
+  const d = CONTENT.release.date ? new Date(CONTENT.release.date) : null;
+  return d && !isNaN(d) ? d : null;
+}
+const PAGE_T0 = Date.now();
+function releaseInfo() {
+  const date = releaseDate();
+  if (!date) return { phase: 'none' };
+  const ms = date - Date.now();
+  if (ms <= 0) return { phase: 'released', date };
+  return { phase: 'prerelease', date, ms, daysLeft: Math.ceil(ms / DAY) };
+}
+/* Дата релиза в виде ДД.ММ.ГГГГ в часовом поясе релиза */
+function releaseDateStr(date) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('ru-RU', { timeZone: CONTENT.release.tz, day: '2-digit', month: '2-digit', year: 'numeric' })
+    .formatToParts(date).map((x) => [x.type, x.value]));
+  return `${p.day}.${p.month}.${p.year}`;
+}
+/* Какие символы глитч-даты уже «стабилизировались».
+   Позиции: 0,1 — день, 3,4 — месяц. Открываются за 6, 4, 2 и 1 день до релиза. */
+function stableGlitch() {
+  const base = CONTENT.inst.glitchDate, r = releaseInfo();
+  if (r.phase === 'none') return { text: base, fixed: [] };
+  const target = releaseDateStr(r.date);
+  const order = [[6, 4], [4, 3], [2, 1], [1, 0]]; // [дней до релиза, позиция]
+  const fixed = r.phase === 'released' ? [0, 1, 3, 4] : order.filter(([d]) => r.daysLeft <= d).map(([, i]) => i);
+  const text = [...base].map((c, i) => (i >= base.length - 4 ? target[i] : fixed.includes(i) ? target[i] : c)).join('');
+  return { text, fixed };
+}
 
 /* ---------- Глитч-дата ----------
    Базовая строка «*#.^?.2027». Символы до года периодически подменяются,
-   изредка на мгновение проступает «настоящая» (но невозможная) дата. */
+   изредка на мгновение проступает «настоящая» (но невозможная) дата.
+   В предрелизный период символы по одному встают на место (см. stableGlitch). */
 const GLITCH_CHARS = '*#^?%&@!§¿0123456789';
 const FAKE_DATES = ['31.02.2027', '00.13.2027', '32.##.2027', '29.02.2027'];
 function mountGlitch(el) {
-  const base = CONTENT.inst.glitchDate;
-  el.innerHTML = [...base].map((c) => `<span class="g">${esc(c)}</span>`).join('');
+  const { text: base, fixed } = stableGlitch();
+  el.innerHTML = [...base].map((c, i) => `<span class="g${fixed.includes(i) ? ' fix' : ''}">${esc(c)}</span>`).join('');
   const spans = [...el.children];
-  const mutable = spans.map((s, i) => i).filter((i) => i < base.length - 4 && base[i] !== '.');
+  const mutable = spans.map((s, i) => i).filter((i) => i < base.length - 4 && base[i] !== '.' && !fixed.includes(i));
+  if (!mutable.length) return; // дата полностью стабилизировалась — больше не мерцает
   setInterval(() => {
     if (!el.isConnected || document.hidden) return;
     if (Math.random() < 0.06) {               // редкая «правдоподобная» дата
@@ -835,10 +1004,83 @@ function renderStart() {
   $('#decode').innerHTML = CONTENT.ui.decode.map((d, i) =>
     `<div><span class="n">${i + 1}.</span><span>${esc(d[0])}<em>— ${esc(d[1])}</em></span></div>`).join('');
   $('#call').innerHTML = `<b>${esc(CONTENT.ui.callTitle)}</b>${esc(CONTENT.ui.callText)}`;
+  renderNotice();
+  renderProcedures();
   show('s-start');
   setBack(null);
   setMain(CONTENT.ui.startBtn.toUpperCase(), startQuiz);
 }
+
+/* ---------- Объявление с обратным отсчётом ---------- */
+let noticeTimer = null;
+function renderNotice() {
+  const box = $('#notice'), r = releaseInfo(), P = CONTENT.prerelease;
+  clearInterval(noticeTimer);
+  // после релиза объявление висит ещё 14 дней
+  if (r.phase === 'none' || (r.phase === 'released' && Date.now() - r.date > 14 * DAY)) { box.hidden = true; return; }
+  box.hidden = false;
+  box.classList.toggle('released', r.phase === 'released');
+  if (r.phase === 'released') {
+    box.innerHTML = `<span class="n-label">${esc(P.noticeLabel)}</span><div class="n-title">${esc(P.releasedTitle)}</div><div class="n-sub">${esc(P.releasedText)}</div>`;
+    return;
+  }
+  box.innerHTML = `<span class="n-label">${esc(P.noticeLabel)}</span>
+    <div class="n-title">${esc(P.noticeTitle)}</div>
+    <div class="n-sub">${esc(P.noticeCountdown)}</div>
+    <div class="n-count" id="n-count"></div>
+    <div class="n-rec" id="n-rec" hidden></div>`;
+  const tick = () => {
+    const ms = releaseDate() - Date.now();
+    if (ms <= 0) { clearInterval(noticeTimer); renderStart(); return; } // релиз наступил прямо сейчас
+    const d = Math.floor(ms / DAY), h = Math.floor(ms % DAY / 36e5), m = Math.floor(ms % 36e5 / 6e4), s = Math.floor(ms % 6e4 / 1e3);
+    const pad = (n) => String(n).padStart(2, '0');
+    $('#n-count').innerHTML = `${d}<small>д</small>${pad(h)}:${pad(m)}:${pad(s)}`;
+  };
+  tick();
+  noticeTimer = setInterval(tick, 1000);
+  loadStats();
+}
+/* «На учёте: N пациентов» — с сервера, если он подключён */
+async function loadStats() {
+  if (!CONTENT.api) return;
+  try {
+    const r = await fetch(CONTENT.api.replace(/\/$/, '') + '/stats');
+    const { patients } = await r.json();
+    const el = $('#n-rec');
+    if (el && patients > 0) { el.textContent = CONTENT.prerelease.onRecord(patients); el.hidden = false; }
+  } catch (e) {}
+}
+
+/* ---------- Процедурный лист ---------- */
+function renderProcedures() {
+  const box = $('#proc'), r = releaseInfo(), P = CONTENT.prerelease, list = CONTENT.procedures;
+  if (r.phase !== 'prerelease') { box.hidden = true; return; }
+  box.hidden = false;
+  const n = list.length;
+  const opened = Math.max(0, Math.min(n, n + 1 - r.daysLeft)); // сколько дней уже открыто
+  const body = (p) => {
+    let h = '';
+    if (p.kind === 'quote') h += `<blockquote>«${esc(p.text)}»</blockquote>${p.caption ? `<div class="cap">${esc(p.caption)}</div>` : ''}`;
+    else h += `<div>${esc(p.text || '')}</div>`;
+    if (p.kind === 'audio' && p.src) h += `<audio controls preload="none" src="${esc(p.src)}"></audio>`;
+    if (p.kind === 'image' && p.src) h += `<img src="${esc(p.src)}" alt="${esc(p.title)}" loading="lazy">`;
+    if (p.kind === 'tracklist') h += `<ol>${(p.items || Object.values(CONTENT.tracks).map((t) => t.title)).map((t) => `<li>${esc(t)}</li>`).join('')}</ol>`;
+    return h;
+  };
+  box.innerHTML = `<h2>${esc(P.procTitle)}</h2><div class="p-sub">${esc(P.procSub)}</div>` + list.map((p, i) => {
+    const open = i < opened, today = i === opened - 1;
+    const status = open ? (today ? '' : P.procDone) : P.procLocked(i + 1 - opened);
+    return `<div class="p-row ${open ? 'open' : 'locked'}${today ? ' today expanded' : ''}" data-i="${i}">
+      <button class="p-head" ${open ? '' : 'disabled'}><span class="d">${esc(P.procDay(i + 1))}</span><span class="t${open ? '' : ' redacted'}">${open ? esc(p.title) : ''}</span><span class="s">${esc(status)}</span></button>
+      ${open ? `<div class="p-body">${body(p)}</div>` : ''}</div>`;
+  }).join('');
+}
+$('#proc').addEventListener('click', (e) => {
+  const row = e.target.closest('.p-row.open');
+  if (!row || !e.target.closest('.p-head')) return;
+  row.classList.toggle('expanded');
+  haptic.tap();
+});
 
 /* ===== 2. Анкета ===== */
 function startQuiz() {
@@ -1012,6 +1254,8 @@ function runAnalysis() {
    Круглая, синяя, слегка «неровная»: подрагивание контура через feDisplacementMap,
    неравномерный оттиск через шумовую маску. */
 function stampSVG() {
+  // после релиза печать в бланке меняется на «ПРЕПАРАТ ВЫДАН»
+  const stampWords = releaseInfo().phase === 'released' ? CONTENT.prerelease.stampReleased : ['ДИАГНОЗ', 'ПОДТВЕРЖДЁН'];
   const outer = '• МИНИСТЕРСТВО ЗВУКОВОГО ЗДРАВООХРАНЕНИЯ • ЦЕНТР МУЗЫКАЛЬНОЙ ПСИХОТЕРАПИИ «СДПН» ';
   const inner = '• ОТДЕЛЕНИЕ АУДИАЛЬНОЙ ТЕРАПИИ • ВЛАДИВОСТОК ';
   const circ = (r) => `M100 ${100 - r} a${r} ${r} 0 1 1 -0.01 0`;
@@ -1034,8 +1278,8 @@ function stampSVG() {
     <g fill="#2442a3" stroke="none" font-family="PT Serif, Times New Roman, serif" font-weight="700">
       <text font-size="10.6"><textPath href="#po" textLength="${(2 * Math.PI * 80 - 2).toFixed(1)}" lengthAdjust="spacing">${outer}</textPath></text>
       <text font-size="9.4"><textPath href="#pi" textLength="${(2 * Math.PI * 57 - 2).toFixed(1)}" lengthAdjust="spacing">${inner}</textPath></text>
-      <text x="100" y="94" font-size="12.5" text-anchor="middle" letter-spacing=".6">ДИАГНОЗ</text>
-      <text x="100" y="110" font-size="10.4" text-anchor="middle" letter-spacing=".2">ПОДТВЕРЖДЁН</text>
+      <text x="100" y="94" font-size="12.5" text-anchor="middle" letter-spacing=".6">${stampWords[0]}</text>
+      <text x="100" y="110" font-size="${stampWords[1].length > 8 ? 10.4 : 12.5}" text-anchor="middle" letter-spacing=".2">${stampWords[1]}</text>
       <text x="100" y="124" font-size="7.5" text-anchor="middle" font-family="PT Mono, monospace" font-weight="400">★ СДПН ★</text>
     </g>
   </g></svg>`;
@@ -1047,7 +1291,7 @@ const SIGN_MYAGKOV = 'M2 26 C6 10 12 8 14 26 C16 8 22 6 24 26 C28 14 34 12 36 22
 
 /* ===== 4. Медзаключение ===== */
 function renderResult() {
-  const r = state.result, f = r.form, i = CONTENT.inst, u = CONTENT.ui;
+  const r = state.result, f = r.form, i = CONTENT.inst, u = CONTENT.ui, rel = releaseInfo();
   const secForm = r.secondary && CONTENT.forms.find((x) => x.scale === r.secondary);
   const fmt = (v) => v.toFixed(2).replace('.', ',');
   const scoresHTML = CONTENT.scaleOrder.slice().sort((a, b) => r.norm[b] - r.norm[a]).map((s) =>
@@ -1090,6 +1334,8 @@ function renderResult() {
         <li>Длительность курса: ${esc(f.duration)}</li>
       </ol>
       <div class="why">Обоснование: ${esc(r.track.why)}</div>
+      ${rel.phase === 'prerelease' ? `<div class="status">${esc(CONTENT.prerelease.status)}</div>` : ''}
+      ${rel.phase === 'released' && Date.now() - rel.date < 14 * DAY ? `<div class="status ok">${esc(CONTENT.prerelease.statusReleased)}</div>` : ''}
     </div>
 
     <p><span class="lbl">Противопоказания:</span> ${esc(f.contra)}</p>
@@ -1108,7 +1354,9 @@ function renderResult() {
 
   show('s-result');
   haptic.ok();
-  setMain(u.acceptBtn.toUpperCase(), acceptRx, '#2442a3');
+  $('#btn-rx').textContent = rxLabel();
+  renderRegCard();
+  setMain(rxLabel().toUpperCase(), acceptRx, '#2442a3');
   setBack(null);
 
   // Печать «ставится», когда блок подписей появляется на экране
@@ -1125,10 +1373,64 @@ function renderResult() {
 }
 
 /* ---------- Действия на результате ---------- */
+/* До релиза главная кнопка — предзаказ (пресейв), после — ссылка на трек */
+const rxLabel = () => releaseInfo().phase === 'prerelease' ? CONTENT.prerelease.presaveBtn : CONTENT.ui.acceptBtn;
 function acceptRx() {
   haptic.tap();
-  const url = state.result.track.url || CONTENT.links.channel;
+  if (releaseInfo().phase === 'prerelease') {
+    if (!openUrl(CONTENT.release.presaveUrl || CONTENT.links.channel)) alertMsg(CONTENT.prerelease.noPresave);
+    return;
+  }
+  const url = state.result.track.url || CONTENT.release.albumUrl || CONTENT.links.channel;
   if (!openUrl(url)) alertMsg(CONTENT.ui.noLink);
+}
+
+/* =====================================================================
+   ПОСТАНОВКА НА УЧЁТ (рассылка в день релиза)
+   1) Telegram спрашивает «Разрешить боту писать вам?» (requestWriteAccess)
+   2) initData (подписан Telegram) + назначенный трек уходят на сервер (server/worker.js)
+   3) сервер проверяет подпись, сохраняет ID и сразу присылает подтверждение в чат
+   ===================================================================== */
+const REG_KEY = 'sdpn_registered';
+const isRegistered = () => { try { return localStorage.getItem(REG_KEY) === '1'; } catch (e) { return false; } };
+function renderRegCard() {
+  const box = $('#reg-card'), P = CONTENT.prerelease;
+  if (releaseInfo().phase !== 'prerelease' || !CONTENT.api) { box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = `<div class="r-title">${esc(P.regTitle)}</div><div class="r-text">${esc(P.regText)}</div>` +
+    (isRegistered() ? `<div class="r-done">✓ ${esc(P.regDone)}</div>`
+      : `<button class="btn btn-primary" id="btn-reg">${esc(P.regBtn)}</button>`) +
+    `<div class="r-priv">${esc(P.regPrivacy)}</div>`;
+  const b = $('#btn-reg');
+  if (b) b.addEventListener('click', register);
+}
+function askWriteAccess() {
+  return new Promise((resolve) => {
+    if (!tgv('6.9')) { resolve(true); return; } // старые клиенты: полагаемся на то, что бот запущен
+    try { tg.requestWriteAccess((ok) => resolve(!!ok)); } catch (e) { resolve(false); }
+  });
+}
+async function register() {
+  const P = CONTENT.prerelease;
+  haptic.tap();
+  if (!IN_TG) { alertMsg(P.regOnlyTg); return; }
+  const b = $('#btn-reg');
+  if (!(await askWriteAccess())) { alertMsg(P.regDenied); return; }
+  b.disabled = true; b.style.opacity = .6;
+  try {
+    const res = await fetch(CONTENT.api.replace(/\/$/, '') + '/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' }, // text/plain — без CORS-предзапроса
+      body: JSON.stringify({ initData: tg.initData, track: state.result.trackId, form: state.result.form.code, card: state.number }),
+    });
+    if (!res.ok) throw new Error(res.status);
+    try { localStorage.setItem(REG_KEY, '1'); } catch (e) {}
+    haptic.ok();
+    renderRegCard();
+  } catch (e) {
+    b.disabled = false; b.style.opacity = '';
+    alertMsg(P.regError);
+  }
 }
 $('#btn-rx').addEventListener('click', acceptRx);
 $('#btn-again').addEventListener('click', () => { haptic.tap(); state.result = null; renderStart(); });
@@ -1336,7 +1638,7 @@ async function openSaveOverlay(hint) {
 function closeOverlay() {
   $('#overlay').classList.remove('on');
   setBack(null);
-  setMain(CONTENT.ui.acceptBtn.toUpperCase(), acceptRx, '#2442a3');
+  setMain(rxLabel().toUpperCase(), acceptRx, '#2442a3');
 }
 
 /* Готовые картинки для сторис лежат в /stories/<id трека>.jpg (см. README). */

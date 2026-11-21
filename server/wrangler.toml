@@ -1,0 +1,13 @@
+name = "sdpn-registry"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+
+[vars]
+MINIAPP_URL = "https://3tochie3.github.io/sdpn/"
+ALLOWED_ORIGINS = "https://3tochie3.github.io"
+
+# База пациентов. database_id появится после `npx wrangler d1 create sdpn` — впишите его сюда.
+[[d1_databases]]
+binding = "DB"
+database_name = "sdpn"
+database_id = "ВПИШИТЕ_ID_ПОСЛЕ_d1_create"
