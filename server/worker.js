@@ -425,6 +425,13 @@ async function campaignStatus(env) {
 /* Админка: прислать любое сообщение рассылки только авторам (проверить вид) */
 async function campaignTest(req, env) {
   const { campaign } = await req.json();
+  if (campaign === 'uchet') { // пример подтверждения постановки на учёт (в текущем периоде)
+    const site = await loadSite(env), c = courseState(env), out = [];
+    for (const id of clean(env.ADMIN_IDS).split(',').filter(Boolean)) {
+      out.push(await sendRich(env, { chat_id: id, photo: banner(env, 'uchet'), html: TEXT.registered({ card: 'СДПН-000', form: 'СДПН-01' }, c, site), reply_markup: { inline_keyboard: registeredButtons(env, c, site) } }));
+    }
+    return json({ sent: out });
+  }
   const m = /^day([1-7])$/.exec(campaign || '');
   const c = campaign === 'release' ? { key: 'release' } : m ? { key: campaign, n: +m[1], daysLeft: 8 - +m[1] } : null;
   if (!c) return json({ error: 'campaign: day1…day7 или release' }, 400);
