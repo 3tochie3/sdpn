@@ -37,8 +37,12 @@ const TEXT = {
   other: 'Дежурный врач принимает только через регистратуру.',
 };
 
+/* Секреты, вставленные через терминал, иногда приходят с пробелами, переводом строки или BOM — чистим */
+const clean = (s) => String(s || '').replace(/[\s﻿]/g, '');
+
 export default {
-  async fetch(req, env) {
+  async fetch(req, rawEnv) {
+    const env = { ...rawEnv, BOT_TOKEN: clean(rawEnv.BOT_TOKEN), ADMIN_KEY: clean(rawEnv.ADMIN_KEY), WEBHOOK_SECRET: clean(rawEnv.WEBHOOK_SECRET) };
     const url = new URL(req.url);
     const cors = corsHeaders(req, env);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
@@ -128,7 +132,11 @@ async function webhook(req, env) {
   const text = (msg.text || '').trim();
   const appBtn = { reply_markup: { inline_keyboard: [[{ text: TEXT.startBtn, web_app: { url: env.MINIAPP_URL } }]] } };
 
-  if (text.startsWith('/start')) {
+  if (text.startsWith('/preview')) {
+    // скрытая команда автора: открыть приложение «за 5 дней до релиза», чтобы проверить предрелизный режим
+    const preview = { reply_markup: { inline_keyboard: [[{ text: 'Предпросмотр: за 5 дней до релиза', web_app: { url: env.MINIAPP_URL + '?days=5' } }]] } };
+    await tg(env, 'sendMessage', { chat_id: msg.chat.id, text: 'Режим предпросмотра. Так приложение будет выглядеть за 5 дней до релиза.', ...preview });
+  } else if (text.startsWith('/start')) {
     await tg(env, 'sendMessage', { chat_id: msg.chat.id, text: TEXT.start, ...appBtn });
   } else if (text.startsWith('/stop')) {
     await env.DB.prepare('UPDATE patients SET active = 0 WHERE id = ?').bind(msg.chat.id).run();

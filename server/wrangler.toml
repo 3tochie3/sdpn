@@ -10,4 +10,4 @@ ALLOWED_ORIGINS = "https://3tochie3.github.io"
 [[d1_databases]]
 binding = "DB"
 database_name = "sdpn"
-database_id = "ВПИШИТЕ_ID_ПОСЛЕ_d1_create"
+database_id = "c348f9ab-816b-41c9-9d1e-88cf8193bf18"
