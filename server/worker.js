@@ -134,7 +134,8 @@ async function webhook(req, env) {
   const text = (msg.text || '').trim();
   const appBtn = { reply_markup: { inline_keyboard: [[{ text: TEXT.startBtn, web_app: { url: env.MINIAPP_URL } }]] } };
 
-  if (text.startsWith('/preview')) {
+  const isAdmin = clean(env.ADMIN_IDS).split(',').filter(Boolean).includes(String(msg.from && msg.from.id));
+  if (text.startsWith('/preview') && isAdmin) { // только авторам; остальным — как на любой текст
     // скрытая команда автора: открыть приложение в предрелизном режиме (v= — чтобы Telegram не открыл старую копию)
     const v = Date.now();
     const preview = { reply_markup: { inline_keyboard: [
