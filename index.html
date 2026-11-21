@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#f5f0e3">
-<title>СДПН — Обследование</title>
+<title>СДПН — ТРОЕТОЧИЕ</title>
 
 <!-- Telegram Mini App SDK (в обычном браузере просто ничего не делает) -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -132,7 +132,13 @@ button { font: inherit; color: inherit; cursor: pointer; }
   position: relative;
 }
 .logo .ecg-under { display: block; width: 100%; height: 34px; margin-top: 2px; }
+/* «альбом ТРОЕТОЧИЕ» под логотипом */
+.byline { text-align: center; margin: 8px 0 4px; }
+.byline-k { display: block; font-family: var(--mono); font-size: 11px; letter-spacing: .22em; color: var(--ink-soft); text-transform: uppercase; }
+.byline-v { display: block; font-family: var(--serif); font-weight: 700; font-size: 22px; letter-spacing: .18em; margin-top: 2px; }
 .decode { margin: 16px 0 4px; display: grid; gap: 10px; }
+.rx .artist { font-weight: 700; letter-spacing: .06em; }
+.fineprint .artist { display: block; margin-top: 6px; font-style: normal; font-family: var(--mono); letter-spacing: .06em; color: var(--ink-soft); }
 .decode div { display: grid; grid-template-columns: 26px 1fr; gap: 6px; font-size: 15px; line-height: 1.35; }
 .decode .n { font-family: var(--mono); color: var(--ink-soft); font-size: 13px; padding-top: 2px; }
 .decode em { display: block; font-style: normal; font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft); margin-top: 2px; letter-spacing: .03em; }
@@ -296,6 +302,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
           <path d="M0 22 H96 l6 -4 l5 4 h10 l4 7 l7 -27 l6 24 l4 -4 h20 l6 -3 l5 3 H198 l3 6 l5 -26 l4 30 l4 -18 l4 14 l3 -9 l3 5 H300" fill="none" stroke="#c4302b" stroke-width="1.6" stroke-linejoin="round"/>
         </svg>
       </div>
+      <div class="byline"><span class="byline-k" data-t="ui.albumBy"></span><span class="byline-v" data-artist></span></div>
       <div class="decode" id="decode"></div>
       <div class="call" id="call"></div>
       <label class="name-field" for="name-input">
@@ -430,7 +437,8 @@ const CONTENT = {
     nameHint: 'Можно не заполнять: в заключении будет «Неизвестно».',
     saveHint: 'Удерживайте изображение, чтобы сохранить его в галерею.',
     storyFallbackHint: 'Сохраните картинку и опубликуйте её в сторис вручную. Назначение вступает в силу с момента публикации.',
-    storyText: 'Мне поставили диагноз. Пройди обследование и ты.',
+    storyText: 'Мне поставили диагноз. Альбом «СДПН» — ТРОЕТОЧИЕ. Пройди обследование и ты.',
+    albumBy: 'альбом',
     noLink: 'Препарат ещё не поступил в аптеки. Следите за каналом.',
     noChannel: 'Ссылка на канал появится позже.',
     preparing: 'Оформляем документ…',
@@ -1076,7 +1084,7 @@ function renderResult() {
     <div class="rx">
       <p class="lbl" style="margin:0 0 6px">Назначение:</p>
       <ol>
-        <li>Курс прослушивания трека<br><span class="track">«${esc(r.track.title)}»</span><br>с альбома «СДПН» (Сборник Для Психически Нестабильных).</li>
+        <li>Курс прослушивания трека<br><span class="track">«${esc(r.track.title)}»</span><br>с альбома «СДПН» (Сборник Для Психически Нестабильных). Исполнитель: <span class="artist">${esc(CONTENT.artist)}</span>.</li>
         <li>Способ применения: аурикулярно, через наушники.</li>
         <li>Режим: ${esc(f.regimen)}</li>
         <li>Длительность курса: ${esc(f.duration)}</li>
@@ -1093,7 +1101,7 @@ function renderResult() {
       <div class="mp">М.П.</div>
       <div class="stamp" id="stamp">${stampSVG()}</div>
     </div>
-    <div class="fineprint">${esc(u.docFooter)}</div>`;
+    <div class="fineprint">${esc(u.docFooter)}<span class="artist">${esc(CONTENT.artist)} · альбом «СДПН»</span></div>`;
 
   document.querySelectorAll('#doc [data-glitch]').forEach(mountGlitch);
   $('#pname').textContent = patientName();
@@ -1247,7 +1255,7 @@ async function drawCard(result, number, name) {
   x.font = '700 30px "PT Serif"'; x.fillText('Клиническая картина:', M, y); y += 46;
   x.font = '400 30px "PT Serif"';
   f.picture.slice(0, 3).forEach((p) => { wrap(x, '— ' + p, W - 2 * M).forEach((l) => { x.fillText(l, M, y); y += 42; }); });
-  y += 30;
+  y += 14;
 
   // Назначение — в рамке
   const boxTop = y;
@@ -1258,10 +1266,11 @@ async function drawCard(result, number, name) {
   do { x.font = `700 ${ts}px "PT Serif"`; tl = wrap(x, `«${result.track.title}»`, W - 2 * M - 68); ts -= 6; } while (tl.length > 2 && ts > 44);
   tl.forEach((l) => { x.fillText(l, M + 34, y); y += ts + 14; });
   x.fillStyle = ink; x.font = '400 30px "PT Serif"'; y += 2;
-  x.fillText('с альбома «СДПН» —', M + 34, y); y += 42;
-  x.fillText('Сборник Для Психически Нестабильных', M + 34, y); y += 30;
+  x.fillText('с альбома «СДПН» — Сборник Для', M + 34, y); y += 42;
+  x.fillText('Психически Нестабильных', M + 34, y); y += 50;
+  x.font = '700 34px "PT Serif"'; x.fillText('Исполнитель: ' + CONTENT.artist, M + 34, y); y += 30;
   x.strokeStyle = ink; x.lineWidth = 3; x.strokeRect(M, boxTop, W - 2 * M, y - boxTop);
-  y += 92;
+  y += 76;
 
   // Подписи + печать поверх «М.П.»
   x.fillStyle = ink; x.font = '400 30px "PT Serif"';
@@ -1385,6 +1394,7 @@ function simulate(n = 20000) {
 /* ---------- Старт ---------- */
 document.querySelectorAll('[data-t]').forEach((el) => { const v = get(el.dataset.t); if (typeof v === 'string') el.textContent = v; });
 document.querySelectorAll('[data-inst]').forEach((el) => { el.innerHTML = instHTML(); });
+document.querySelectorAll('[data-artist]').forEach((el) => { el.textContent = CONTENT.artist; });
 document.querySelectorAll('[data-glitch]').forEach(mountGlitch);
 const params = new URLSearchParams(location.search);
 if (params.has('export')) exportStories();
