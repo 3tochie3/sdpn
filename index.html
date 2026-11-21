@@ -135,6 +135,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
   position: relative;
 }
 .logo .ecg-under { display: block; width: 100%; height: 34px; margin-top: 2px; }
+/* ТРОЕТОЧИЕ — ссылка на канал: та же надпись, тонкое подчёркивание */
+.artist-link { color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); }
+.artist-link:active { opacity: .6; }
 /* «альбом ТРОЕТОЧИЕ» под логотипом */
 .byline { text-align: center; margin: 8px 0 4px; }
 .byline-k { display: block; font-family: var(--mono); font-size: 11px; letter-spacing: .22em; color: var(--ink-soft); text-transform: uppercase; }
@@ -542,7 +545,7 @@ const CONTENT = {
   /* ---------- РЕЛИЗ И ПРЕДРЕЛИЗНЫЙ РЕЖИМ ----------
      Пока date пустая — приложение работает как обычно.
      Как только вписана дата, до неё включается предрелизный режим:
-       • отсчёт «до поступления препарата в аптеки» на старте;
+       • отсчёт «до поступления препарата на площадки» на старте;
        • глитч-дата каждый день «стабилизируется» и к релизу становится настоящей датой;
        • процедурный лист на 7 дней (открывается по дню);
        • вместо «Принять назначение» — «Оформить предзаказ» (ссылка на пресейв);
@@ -563,7 +566,7 @@ const CONTENT = {
   prerelease: {
     noticeLabel: 'ОБЪЯВЛЕНИЕ',
     noticeTitle: 'Препарат «СДПН» проходит последние испытания.',
-    noticeCountdown: 'Поступление в аптеки через',
+    noticeCountdown: 'Поступление на площадки через',
     releasedTitle: 'Курс первоначального лечения пройден.',
     releasedText: 'Препарат «СДПН» поступил на все площадки. Пройдите обследование, чтобы получить назначение.',
     releasedBtn: '▶ Слушать «СДПН»',
@@ -572,7 +575,7 @@ const CONTENT = {
     regNext: (n) => `Вы станете пациентом № ${n} в очереди на получение препарата.`,
     presaveBtn: 'Предзаказ «СДПН»',
     noPresave: 'Предзаказ откроется в ближайшее время. Следите за каналом.',
-    status: 'Статус назначения: препарат ожидает поступления в аптеки.',
+    status: 'Статус назначения: препарат ожидает поступления на площадки.',
     statusReleased: 'Статус назначения: препарат выдан.',
     regTitle: 'Постановка на учёт',
     regText: 'Вставшим на учёт выдаётся процедурный лист. Дежурный врач лично сообщит о поступлении препарата и пришлёт назначение в день релиза.',
@@ -584,7 +587,7 @@ const CONTENT = {
     regOnlyTg: 'Встать на учёт можно, открыв обследование в Telegram.',
     procTitle: 'Процедурный лист',
     procSub: 'Курс подготовки к приёму препарата. Процедуры открываются ежедневно, по одной.',
-    procWaiting: 'Вы поставлены на учёт. Курс из 7 процедур начнётся за неделю до поступления препарата в аптеки. Дата будет объявлена дополнительно — дежурный врач сообщит лично.',
+    procWaiting: 'Вы поставлены на учёт. Курс из 7 процедур начнётся за неделю до поступления препарата на площадки. Дата будет объявлена дополнительно — дежурный врач сообщит лично.',
     procFinished: 'Курс подготовки завершён. Препарат выдан. Все процедуры доступны для повторного прохождения.',
     procTbd: 'дата уточняется',
     tabProc: 'Процедуры',
@@ -698,7 +701,7 @@ const CONTENT = {
     storyFallbackHint: 'Сохраните картинку и опубликуйте её в сторис вручную. Назначение вступает в силу с момента публикации.',
     storyText: 'Мне поставили диагноз. Альбом «СДПН» — ТРОЕТОЧИЕ. Пройди обследование и ты.',
     albumBy: 'альбом',
-    noLink: 'Препарат ещё не поступил в аптеки. Следите за каналом — дату поступления объявят в нём.',
+    noLink: 'Препарат ещё не поступил на площадки. Следите за каналом — дату поступления объявят в нём.',
     noChannel: 'Ссылка на канал появится позже.',
     preparing: 'Оформляем документ…',
     disclaimer: 'Обследование вымышлено и является частью художественного замысла альбома. Это не психологический тест. Если вам действительно тяжело — обратитесь к специалисту.',
@@ -1262,6 +1265,15 @@ $('#hist').addEventListener('click', (e) => {
   if (e.target.closest('.h-head')) { row.classList.toggle('expanded'); haptic.tap(); }
 });
 
+/* ТРОЕТОЧИЕ — ссылка на канал артиста (открывается внутри Telegram) */
+const artistLink = () => CONTENT.links.channel
+  ? `<a class="artist-link" href="${esc(CONTENT.links.channel)}">${esc(CONTENT.artist)}</a>` : esc(CONTENT.artist);
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('.artist-link');
+  if (!a) return;
+  e.preventDefault(); haptic.tap(); openUrl(a.getAttribute('href'));
+});
+
 function instHTML() {
   const i = CONTENT.inst;
   return `<div class="l1">${esc(i.ministry)}</div><div class="l2">${esc(i.center)}</div><div class="l3">${esc(i.dept)}</div>`;
@@ -1718,7 +1730,7 @@ function renderResult(opts = {}) {
     <div class="rx">
       <p class="lbl" style="margin:0 0 6px">Назначение:</p>
       <ol>
-        <li>Курс прослушивания трека<br><span class="track">«${esc(r.track.title)}»</span><br>с альбома «СДПН» (Сборник Для Психически Нестабильных). Исполнитель: <span class="artist">${esc(CONTENT.artist)}</span>.</li>
+        <li>Курс прослушивания трека<br><span class="track">«${esc(r.track.title)}»</span><br>с альбома «СДПН» (Сборник Для Психически Нестабильных). Исполнитель: <span class="artist">${artistLink()}</span>.</li>
         <li>Способ применения: аурикулярно, через наушники.</li>
         <li>Режим: ${esc(f.regimen)}</li>
         <li>Длительность курса: ${esc(f.duration)}</li>
@@ -1737,7 +1749,7 @@ function renderResult(opts = {}) {
       <div class="mp">М.П.</div>
       <div class="stamp" id="stamp">${stampSVG()}</div>
     </div>
-    <div class="fineprint">${esc(u.docFooter)}<span class="artist">${esc(CONTENT.artist)} · альбом «СДПН»</span></div>`;
+    <div class="fineprint">${esc(u.docFooter)}<span class="artist">${artistLink()} · альбом «СДПН»</span></div>`;
 
   document.querySelectorAll('#doc [data-glitch]').forEach(mountGlitch);
   $('#pname').textContent = patientName();
@@ -2186,7 +2198,7 @@ function simulate(n = 20000) {
 /* ---------- Старт ---------- */
 document.querySelectorAll('[data-t]').forEach((el) => { const v = get(el.dataset.t); if (typeof v === 'string') el.textContent = v; });
 document.querySelectorAll('[data-inst]').forEach((el) => { el.innerHTML = instHTML(); });
-document.querySelectorAll('[data-artist]').forEach((el) => { el.textContent = CONTENT.artist; });
+document.querySelectorAll('[data-artist]').forEach((el) => { el.innerHTML = artistLink(); });
 (async () => {
   // Предпросмотр (?days, ?fresh) и служебные режимы — только авторам: на своём компьютере
   // (localhost) или в Telegram, если сервер подтвердил, что это автор. Остальные видят обычное приложение.
