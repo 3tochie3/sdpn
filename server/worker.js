@@ -51,6 +51,7 @@ export default {
       if (url.pathname === '/stats' && req.method === 'GET') return withCors(await stats(env), cors);
       if (url.pathname === '/status' && req.method === 'POST') return withCors(await status(req, env), cors);
       if (url.pathname === '/teaser' && req.method === 'POST') return withCors(await teaser(req, env), cors);
+      if (url.pathname === '/whoami' && req.method === 'POST') return withCors(await whoami(req, env), cors);
       if (url.pathname === '/webhook' && req.method === 'POST') return await webhook(req, env);
       if (url.pathname.startsWith('/admin/')) {
         if (req.headers.get('X-Admin-Key') !== env.ADMIN_KEY || !env.ADMIN_KEY) return json({ error: 'forbidden' }, 403);
@@ -197,6 +198,14 @@ async function teaser(req, env) {
   return new Response(value, {
     headers: { 'Content-Type': (metadata && metadata.type) || 'audio/mpeg', 'Cache-Control': 'private, no-store' },
   });
+}
+
+/* ---------- Автор ли это? (приложение включает предпросмотр ?days/?fresh только авторам) ---------- */
+async function whoami(req, env) {
+  const body = JSON.parse(await req.text());
+  const data = body.initData ? await verifyInitData(body.initData, env.BOT_TOKEN) : null;
+  const id = data && JSON.parse(data.get('user') || '{}').id;
+  return json({ admin: !!id && clean(env.ADMIN_IDS).split(',').filter(Boolean).includes(String(id)) });
 }
 
 /* ---------- Статистика ---------- */

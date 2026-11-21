@@ -1031,10 +1031,23 @@ function plural(n, one, few, many) {
    РЕЛИЗ: фазы 'none' (дата не задана) → 'prerelease' → 'released'
    ===================================================================== */
 const QS = new URLSearchParams(location.search);
+const IS_LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname); // компьютер автора (tools/save_server.py)
+let PREVIEW_OK = false; // включается только для авторов, см. «Старт» в конце скрипта
+/* Спросить у сервера, автор ли открыл приложение (Telegram ID в ADMIN_IDS) */
+async function checkAuthor() {
+  if (!IN_TG || !CONTENT.api) return false;
+  try {
+    const ctl = new AbortController(); setTimeout(() => ctl.abort(), 4000);
+    const r = await fetch(CONTENT.api.replace(/\/$/, '') + '/whoami', {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ initData: tg.initData }), signal: ctl.signal,
+    });
+    return r.ok && !!(await r.json()).admin;
+  } catch (e) { return false; }
+}
 const DAY = 864e5;
 function releaseDate() {
   // ?days=N — предпросмотр: «релиз через N дней» (0 — уже вышел)
-  if (QS.has('days')) { const d = parseFloat(QS.get('days')) || 0; return new Date(PAGE_T0 + (d > 0 ? d * DAY - 6e4 : -36e5)); }
+  if (PREVIEW_OK && QS.has('days')) { const d = parseFloat(QS.get('days')) || 0; return new Date(PAGE_T0 + (d > 0 ? d * DAY - 6e4 : -36e5)); }
   const d = CONTENT.release.date ? new Date(CONTENT.release.date) : null;
   return d && !isNaN(d) ? d : null;
 }
@@ -1724,7 +1737,7 @@ function acceptRx() {
 const REG_KEY = 'sdpn_registered';
 /* ?fresh — предпросмотр «глазами нового пользователя»: не на учёте, история пустая,
    ничего из настоящей карты не читается и не перезаписывается (кроме реальной постановки на учёт кнопкой). */
-const FRESH = QS.has('fresh');
+let FRESH = false; // включается на старте, только если предпросмотр разрешён (автор)
 let freshRegistered = false;
 const isRegistered = () => { if (FRESH) return freshRegistered; try { return localStorage.getItem(REG_KEY) === '1'; } catch (e) { return false; } };
 const setRegistered = (v) => { if (FRESH) { freshRegistered = !!v; return; } try { v ? localStorage.setItem(REG_KEY, '1') : localStorage.removeItem(REG_KEY); } catch (e) {} };
@@ -2059,11 +2072,18 @@ function simulate(n = 20000) {
 document.querySelectorAll('[data-t]').forEach((el) => { const v = get(el.dataset.t); if (typeof v === 'string') el.textContent = v; });
 document.querySelectorAll('[data-inst]').forEach((el) => { el.innerHTML = instHTML(); });
 document.querySelectorAll('[data-artist]').forEach((el) => { el.textContent = CONTENT.artist; });
-document.querySelectorAll('[data-glitch]').forEach(mountGlitch);
-const params = new URLSearchParams(location.search);
-if (params.has('export')) exportStories();
-else if (params.has('sim')) { document.body.innerHTML = '<pre style="padding:20px;font:14px monospace">' + JSON.stringify(simulate(), null, 2) + '</pre>'; }
-else { renderStart(); loadHistory(); }
+(async () => {
+  // Предпросмотр (?days, ?fresh) и служебные режимы — только авторам: на своём компьютере
+  // (localhost) или в Telegram, если сервер подтвердил, что это автор. Остальные видят обычное приложение.
+  const wantsPreview = QS.has('days') || QS.has('fresh');
+  if (IS_LOCAL) PREVIEW_OK = true;
+  else if (wantsPreview) PREVIEW_OK = await checkAuthor();
+  FRESH = PREVIEW_OK && QS.has('fresh');
+  document.querySelectorAll('[data-glitch]').forEach(mountGlitch);
+  if (IS_LOCAL && QS.has('export')) exportStories();
+  else if (IS_LOCAL && QS.has('sim')) { document.body.innerHTML = '<pre style="padding:20px;font:14px monospace">' + JSON.stringify(simulate(), null, 2) + '</pre>'; }
+  else { renderStart(); loadHistory(); }
+})();
 </script>
 </body>
 </html>
